@@ -57,8 +57,11 @@ test('CdM-8 DAP handles real CoCAS breakpoints, source steps, RAM and subroutine
   const main = path.join(root, 'main.asm');
   const library = path.join(root, 'lib', 'routines.asm');
   const mainLines = (await fs.readFile(main, 'utf8')).split(/\r?\n/);
+  const libraryLines = (await fs.readFile(library, 'utf8')).split(/\r?\n/);
   const callLine = mainLines.findIndex(line => /^\s*jsr\b/.test(line)) + 1;
   const haltLine = mainLines.findIndex(line => /^\s*halt\b/.test(line)) + 1;
+  const loadLine = libraryLines.findIndex(line => /^\s*ldi\s+r0,\s*42\b/.test(line)) + 1;
+  const returnLine = libraryLines.findIndex(line => /^\s*rts\b/.test(line)) + 1;
   const breakpoints = await request('setBreakpoints', {
     source: {path: main}, breakpoints: [{line: callLine - 1}, {line: callLine}],
   });
@@ -72,7 +75,7 @@ test('CdM-8 DAP handles real CoCAS breakpoints, source steps, RAM and subroutine
   const frames = await current();
   assert.equal(frames.length, 2);
   assert.equal(frames[0].source.path, library);
-  assert.equal(frames[0].line, 4);
+  assert.equal(frames[0].line, loadLine);
   assert.equal(frames[1].line, callLine);
   const scopes = await request('scopes', {frameId: frames[0].id});
   const ram = await request('variables', {variablesReference: scopes.scopes[1].variablesReference, start: 255, count: 1});
@@ -82,7 +85,7 @@ test('CdM-8 DAP handles real CoCAS breakpoints, source steps, RAM and subroutine
   assert.equal(memory.unreadableBytes, 1);
 
   await resume('next', 'step');
-  assert.equal((await current())[0].line, 5);
+  assert.equal((await current())[0].line, returnLine);
   assert.equal((await request('evaluate', {expression: 'r0'})).result, '0x2A');
   await resume('stepOut', 'step');
   assert.equal((await current())[0].line, haltLine);
