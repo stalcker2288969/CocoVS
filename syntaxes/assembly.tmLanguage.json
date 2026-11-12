@@ -1,0 +1,228 @@
+{
+  "scopeName": "source.asm.cocovs",
+  "name": "CocoVS Assembly",
+  "patterns": [
+    {
+      "match": "^\\s*(#\\s*@include)\\s+(\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'|[^\\s#;]+)",
+      "captures": {
+        "1": {
+          "name": "keyword.control.import.cocovs"
+        },
+        "2": {
+          "name": "string.quoted.cocovs"
+        }
+      }
+    },
+    {
+      "name": "comment.line.number-sign.cocovs",
+      "match": "#.*$"
+    },
+    {
+      "name": "string.quoted.double.cocovs",
+      "begin": "\"",
+      "end": "\"|$",
+      "patterns": [
+        {
+          "name": "constant.character.escape.cocovs",
+          "match": "\\\\."
+        }
+      ]
+    },
+    {
+      "name": "string.quoted.single.cocovs",
+      "begin": "'",
+      "end": "'|$",
+      "patterns": [
+        {
+          "name": "constant.character.escape.cocovs",
+          "match": "\\\\."
+        }
+      ]
+    },
+    {
+      "match": "^\\s*(macro\\b|\\*)\\s*([A-Za-z_.][A-Za-z0-9_.]*)\\s*(/)\\s*([0-9]+)\\.?",
+      "captures": {
+        "1": {
+          "name": "keyword.control.cocovs"
+        },
+        "2": {
+          "name": "keyword.control.macro.name.cocovs"
+        },
+        "3": {
+          "name": "punctuation.separator.cocovs"
+        },
+        "4": {
+          "name": "constant.numeric.cocovs"
+        }
+      }
+    },
+    {
+      "begin": "^\\s*(?:([A-Za-z_.][A-Za-z0-9_.]*(?:\\s*,\\s*[A-Za-z_.][A-Za-z0-9_.]*)*)\\s*([:>])\\s*)?((?:banything|bcc|bcs|beq|bfalse|bge|bgt|bhi|bhs|ble|blo|bls|blt|bmi|bnanything|bncc|bncs|bne|bneq|bnfalse|bnge|bngt|bnhi|bnhs|bnle|bnlo|bnls|bnlt|bnmi|bnne|bnnz|bnpl|bntrue|bnvc|bnvs|bnz|bpl|br|btrue|bvc|bvs|bz|crc|jmp|jsr|jsrr|popc|ret|rti|rts|stpc))(?![A-Za-z0-9_.]|\\s*[:>])",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.type.label.cocovs"
+        },
+        "2": {
+          "name": "punctuation.separator.cocovs"
+        },
+        "3": {
+          "name": "support.constant.property-value.control-flow.cocovs"
+        }
+      },
+      "end": "$",
+      "patterns": [
+        {
+          "include": "#operands"
+        }
+      ]
+    },
+    {
+      "begin": "^\\s*(?:([A-Za-z_.][A-Za-z0-9_.]*(?:\\s*,\\s*[A-Za-z_.][A-Za-z0-9_.]*)*)\\s*([:>])\\s*)?((?:asect|rsect|tplate|dc|db|dw|ds|align|ext|end|macro|mend|mpush|mpop|if|is|then|else|fi|while|stays|wend|do|until|break|continue))(?![A-Za-z0-9_.]|\\s*[:>])",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.type.label.cocovs"
+        },
+        "2": {
+          "name": "punctuation.separator.cocovs"
+        },
+        "3": {
+          "name": "keyword.control.cocovs"
+        }
+      },
+      "end": "$",
+      "patterns": [
+        {
+          "include": "#operands"
+        }
+      ]
+    },
+    {
+      "begin": "^\\s*(?:([A-Za-z_.][A-Za-z0-9_.]*(?:\\s*,\\s*[A-Za-z_.][A-Za-z0-9_.]*)*)\\s*([:>])\\s*)?((?:add|addc|addsp|and|bic|bis|bit|clr|cmp|dec|define|di|ei|halt|inc|int|ioi|lcb|lcsb|lcw|ld|ldb|ldc|ldi|ldpc|ldps|ldsa|ldsb|ldsp|ldssp|ldv|ldw|lsb|lssb|lsw|move|neg|nop|not|or|osix|pop|popall|pops|posp|pupc|pups|push|pushall|pusp|rannum|rcl|rcr|reset|restore|rol|ror|run|save|scl|setsp|shl|shla|shr|shra|ssb|ssw|st|stb|stps|stsp|stssp|stv|stw|sub|subc|swp|swpb|swpw|sxt|syscall|tst|wait|xor))(?![A-Za-z0-9_.]|\\s*[:>])",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.type.label.cocovs"
+        },
+        "2": {
+          "name": "punctuation.separator.cocovs"
+        },
+        "3": {
+          "name": "support.function.instruction.cocovs"
+        }
+      },
+      "end": "$",
+      "patterns": [
+        {
+          "include": "#operands"
+        }
+      ]
+    },
+    {
+      "begin": "^\\s*(?:([A-Za-z_.][A-Za-z0-9_.]*(?:\\s*,\\s*[A-Za-z_.][A-Za-z0-9_.]*)*)\\s*([:>])\\s*)?([A-Za-z_.][A-Za-z0-9_.]*)(?![A-Za-z0-9_.]|\\s*[:>])",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.type.label.cocovs"
+        },
+        "2": {
+          "name": "punctuation.separator.cocovs"
+        },
+        "3": {
+          "name": "keyword.control.macro.call.cocovs"
+        }
+      },
+      "end": "$",
+      "patterns": [
+        {
+          "include": "#operands"
+        }
+      ]
+    },
+    {
+      "name": "entity.name.type.label.cocovs",
+      "match": "^\\s*[A-Za-z_.][A-Za-z0-9_.]*(?:\\s*,\\s*[A-Za-z_.][A-Za-z0-9_.]*)*(?=\\s*[:>])"
+    },
+    {
+      "name": "keyword.control.cocovs",
+      "match": "\\b(?:asect|rsect|tplate|dc|db|dw|ds|align|ext|end|macro|mend|mpush|mpop|if|is|then|else|fi|while|stays|wend|do|until|break|continue)\\b"
+    },
+    {
+      "name": "variable.parameter.cocovs",
+      "match": "\\$(?:[0-9]+|\\$)\\b|\\$\\$"
+    },
+    {
+      "name": "variable.language.register.cocovs",
+      "match": "\\b(?:r[0-9]+|fp|sp|pc|ps|ssp)\\b"
+    },
+    {
+      "name": "constant.numeric.cocovs",
+      "match": "(?<![\\w.])(?:0x[0-9A-Fa-f]+|0b[01]+|[0-9]+)(?![\\w.])"
+    },
+    {
+      "name": "keyword.operator.cocovs",
+      "match": "[+\\-*/>]"
+    },
+    {
+      "name": "punctuation.separator.cocovs",
+      "match": "[,:]"
+    }
+  ],
+  "repository": {
+    "operands": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.cocovs",
+          "match": "#.*$"
+        },
+        {
+          "name": "string.quoted.double.cocovs",
+          "begin": "\"",
+          "end": "\"|$",
+          "patterns": [
+            {
+              "name": "constant.character.escape.cocovs",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.cocovs",
+          "begin": "'",
+          "end": "'|$",
+          "patterns": [
+            {
+              "name": "constant.character.escape.cocovs",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "variable.parameter.cocovs",
+          "match": "\\$(?:[0-9]+|\\$)\\b|\\$\\$"
+        },
+        {
+          "name": "variable.language.register.cocovs",
+          "match": "\\b(?:r[0-9]+|fp|sp|pc|ps|ssp)\\b"
+        },
+        {
+          "name": "constant.numeric.cocovs",
+          "match": "(?<![\\w.])(?:0x[0-9A-Fa-f]+|0b[01]+|[0-9]+)(?![\\w.])"
+        },
+        {
+          "name": "keyword.control.cocovs",
+          "match": "\\b(?:asect|rsect|tplate|dc|db|dw|ds|align|ext|end|macro|mend|mpush|mpop|if|is|then|else|fi|while|stays|wend|do|until|break|continue)\\b"
+        },
+        {
+          "name": "entity.name.type.label.reference.cocovs",
+          "match": "(?<![A-Za-z0-9_.$])[A-Za-z_.][A-Za-z0-9_.]*"
+        },
+        {
+          "name": "keyword.operator.cocovs",
+          "match": "[+\\-*/>]"
+        },
+        {
+          "name": "punctuation.separator.cocovs",
+          "match": "[,:]"
+        }
+      ]
+    }
+  }
+}

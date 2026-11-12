@@ -1,0 +1,5 @@
+node_modules/
+*.vsix
+build/
+__pycache__/
+*.pyc

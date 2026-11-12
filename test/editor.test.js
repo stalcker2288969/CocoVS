@@ -1,0 +1,131 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const vm = require('node:vm');
+const {createRequire} = require('node:module');
+
+test('editor completes includes and imported symbols, colors references and navigates to definitions', async t => {
+  const root = await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-editor-'));
+  t.after(() => fs.rm(root, {recursive: true, force: true}));
+  await fs.mkdir(path.join(root, 'lib'));
+  const main = path.join(root, 'main.asm');
+  const library = path.join(root, 'lib', 'math.asm');
+  const text = '# @include "lib/math.asm"\n# @include "not yet.asm"\nasect 0\n    jsr calculate\n    halt\nend\n';
+  await fs.writeFile(main, text);
+  await fs.writeFile(library, 'rsect math\nstale>\n    rts\nend\n');
+
+  const uri = fsPath => ({fsPath, scheme: 'file'});
+  const document = (fileName, content) => ({
+    uri: uri(fileName), fileName, languageId: 'cocovs-assembly', version: 1, eol: 1,
+    lineCount: content.split('\n').length, lineAt: line => ({text: content.split('\n')[line]}), getText: () => content,
+  });
+  const mainDoc = document(main, text);
+  const libDoc = document(library, 'rsect math\n# Computes the result\ncalculate>\n    rts\nend\n');
+  const providers = {};
+  const dispose = {dispose() {}};
+  class Position {
+    constructor(line, character) { this.line = line; this.character = character; }
+  }
+  class Range {
+    constructor(line, start, endLine, end) {
+      this.start = new Position(line, start);
+      this.end = new Position(endLine, end);
+    }
+  }
+  const api = {
+    Uri: {file: uri}, Position, Range, EndOfLine: {CRLF: 2}, SymbolKind: {}, CodeActionKind: {QuickFix: 'quickfix'},
+    Location: class { constructor(target, range) { this.uri = target; this.range = range; } },
+    EventEmitter: class { fire() {} dispose() {} },
+    MarkdownString: class {
+      value = '';
+      appendText(value) { this.value += value; }
+      appendMarkdown(value) { this.value += value; }
+      appendCodeblock(value) { this.value += value; }
+    },
+    Hover: class { constructor(contents) { this.contents = contents; } },
+    TextEdit: {insert: (position, newText) => ({position, newText})},
+    WorkspaceEdit: class { entries = []; replace(uri, range, text) { this.entries.push({uri, range, text}); } },
+    CompletionItem: class { constructor(label, kind) { this.label = label; this.kind = kind; } },
+    CompletionItemKind: {Function: 1, Reference: 2, Keyword: 3, Folder: 4, File: 5},
+    SemanticTokensLegend: class { constructor(tokens) { this.tokens = tokens; } },
+    SemanticTokensBuilder: class {
+      items = [];
+      push(...item) { this.items.push(item); }
+      build() { return this.items; }
+    },
+    workspace: {
+      textDocuments: [mainDoc, libDoc], getWorkspaceFolder: () => ({uri: uri(root)}),
+      getConfiguration: () => ({get: () => 'cdm8'}), onDidSaveTextDocument: () => dispose,
+      onDidChangeTextDocument: () => dispose, onDidCloseTextDocument: () => dispose, onDidChangeConfiguration: () => dispose,
+    },
+    window: {visibleTextEditors: [], onDidChangeVisibleTextEditors: () => dispose},
+    languages: new Proxy({createDiagnosticCollection: () => dispose}, {
+      get(target, name) {
+        return target[name] ?? ((_selector, provider) => { providers[name] = provider; return dispose; });
+      },
+    }),
+  };
+  const file = path.resolve(__dirname, '../src/editor.js');
+  const code = await fs.readFile(file, 'utf8');
+  const nodeRequire = createRequire(file);
+  const moduleForTest = {exports: {}};
+  const execute = vm.runInThisContext('(function(require, module) {' + code + '\n})', {filename: file});
+  execute(name => name === 'vscode' ? api : name === './format-editor' ? {registerFormatter() {}} : nodeRequire(name), moduleForTest);
+  const context = {subscriptions: []};
+  moduleForTest.exports.registerEditor(context);
+  t.after(() => context.subscriptions.forEach(item => item.dispose()));
+  const token = {isCancellationRequested: false};
+
+  const definition = providers.registerDefinitionProvider;
+  const locations = await definition.provideDefinition(mainDoc, new Position(3, 11), token);
+  assert.equal(locations[0].uri.fsPath, library);
+  assert.equal(locations[0].range.start.line, 2);
+
+  const completion = providers.registerCompletionItemProvider;
+  const files = await completion.provideCompletionItems(mainDoc, new Position(0, 16), token);
+  assert.ok(files.some(item => item.label === 'math.asm'));
+  const labels = await completion.provideCompletionItems(mainDoc, new Position(3, 8), token);
+  const candidate = labels.find(item => item.label === 'calculate');
+  assert.equal(candidate.documentation, 'Computes the result');
+  assert.equal(candidate.additionalTextEdits[0].newText, 'calculate: ext\n');
+  assert.equal(candidate.additionalTextEdits[0].position.line, 2);
+
+  const commentItems = line => completion.provideCompletionItems(document(main, line), new Position(0, line.length), token);
+  const tags = await commentItems('# @');
+  assert.deepEqual(tags.map(item => item.label), ['@type', '@param', '@return', '@returns', '@changed']);
+  assert.equal(tags[0].insertText, '@type: ');
+  const types = await commentItems('# @type: i');
+  assert.deepEqual(types.map(item => item.label), ['i8', 'i16']);
+  assert.equal(types[0].range.start.character, 9);
+  const registers = await commentItems('# @param r');
+  assert.deepEqual(registers.map(item => item.label), ['r0', 'r1', 'r2', 'r3']);
+  assert.ok((await commentItems('# @return ')).some(item => item.label === 'r0'));
+  assert.ok((await commentItems('# @changed ')).some(item => item.label === 'PS'));
+  assert.deepEqual(await commentItems('    dc "# @type: i"'), []);
+
+  const hover = providers.registerHoverProvider;
+  const documented = document(main, '# @param r0 Input\n# @return r1 Result\n# @changed PS Flags\nroutine:\n    rts');
+  const details = await hover.provideHover(documented, new Position(3, 1), token);
+  assert.match(details.contents[0].value, /Inputs[\s\S]*r0 Input|Inputs[\s\S]*r0 - Input/);
+  assert.match(details.contents[0].value, /Returns[\s\S]*r1 Result/);
+  assert.match(details.contents[0].value, /Changed[\s\S]*PS Flags/);
+
+  const semantic = providers.registerDocumentSemanticTokensProvider;
+  const highlights = await semantic.provideDocumentSemanticTokens(mainDoc, token);
+  assert.ok(highlights.some(([line, column, length, type]) => line === 3 && column === 4 && length === 3 && type === 3));
+  assert.ok(highlights.some(([line, column, length, type]) => line === 3 && column === 8 && length === 9 && type === 2));
+
+  await fs.writeFile(path.join(root, 'cdm-project.json'), JSON.stringify({entry: 'main.asm', target: 'cdm8'}));
+  const importer = document(main, '# @include "lib/math.asm"\ncalculate: ext\nasect 0\n    jsr calculate\n    halt\nend\n');
+  api.workspace.textDocuments[0] = importer;
+  const rename = providers.registerRenameProvider;
+  const selected = await rename.prepareRename(importer, new Position(3, 10), token);
+  assert.equal(selected.placeholder, 'calculate');
+  const edit = await rename.provideRenameEdits(importer, new Position(3, 10), 'sum', token);
+  assert.deepEqual(edit.entries.map(entry => [entry.uri.fsPath, entry.range.start.line, entry.text]),
+    [[main, 1, 'sum'], [main, 3, 'sum'], [library, 2, 'sum']]);
+});

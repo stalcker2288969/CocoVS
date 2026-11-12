@@ -1,0 +1,112 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": [
+    "entry",
+    "target"
+  ],
+  "properties": {
+    "entry": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Entry assembly source relative to the project."
+    },
+    "target": {
+      "type": "string",
+      "enum": [
+        "cdm8",
+        "cdm8e",
+        "cdm16",
+        "cdm16e",
+        "custom"
+      ]
+    },
+    "architecture": {
+      "type": "string",
+      "enum": [
+        "harvard",
+        "vonNeumann"
+      ],
+      "default": "vonNeumann"
+    },
+    "environment": {
+      "type": "string",
+      "enum": [
+        "external",
+        "emulator"
+      ],
+      "default": "emulator",
+      "description": "Optional CdM Processors debugger mode. CdM-8 and CdM-8e use external CDP."
+    },
+    "address": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^wss?://",
+      "default": "ws://localhost:7001"
+    },
+    "extraSources": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    },
+    "instructions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Mnemonics for custom-target highlighting and completion."
+    },
+    "imageExtension": {
+      "type": "string",
+      "pattern": "^\\.[a-zA-Z0-9][a-zA-Z0-9_-]*$",
+      "default": ".img"
+    },
+    "assembler": {
+      "$ref": "#/definitions/command"
+    },
+    "runner": {
+      "$ref": "#/definitions/command"
+    }
+  },
+  "if": {
+    "properties": {
+      "target": {
+        "const": "custom"
+      }
+    },
+    "required": [
+      "target"
+    ]
+  },
+  "then": {
+    "required": [
+      "assembler"
+    ]
+  },
+  "definitions": {
+    "command": {
+      "type": "object",
+      "required": [
+        "command"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Executable or project-relative path."
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Arguments, with optional placeholders ${project}, ${entry}, ${image}, ${debug}, and a separate ${sources} entry."
+        }
+      }
+    }
+  }
+}

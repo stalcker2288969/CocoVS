@@ -1,0 +1,8 @@
+{
+  "entry": "main.asm",
+  "target": "cdm8",
+  "architecture": "vonNeumann",
+  "environment": "external",
+  "address": "ws://localhost:7001",
+  "extraSources": []
+}

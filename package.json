@@ -1,0 +1,333 @@
+{
+  "name": "cdm-project-tools",
+  "displayName": "CocoVS",
+  "description": "Coco-de-Mer assembly, local emulation and custom processor projects",
+  "version": "0.8.1",
+  "publisher": "cdm-project-community",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stalcker2288969/CocoVS.git"
+  },
+  "bugs": {
+    "url": "https://github.com/stalcker2288969/CocoVS/issues"
+  },
+  "homepage": "https://github.com/stalcker2288969/CocoVS#readme",
+  "keywords": ["assembly", "coco-de-mer", "cocas", "cdm8", "cdm16", "cdmbot"],
+  "galleryBanner": {
+    "color": "#101b33",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Debuggers"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onTaskType:cocovs",
+    "onDebug:cocovs-debug",
+    "onDebugResolve:cocovs-debug",
+    "workspaceContains:**/cdm-project.json"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Assembly editing is available. Building, running and setup require a trusted workspace."
+    },
+    "virtualWorkspaces": false
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "cocovs.setup",
+        "title": "Set Up Toolchain",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cdmProject.init",
+        "title": "Initialize Project",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cocovs.createTestSuite",
+        "title": "Create cdmbot Test Suite",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cocovs.addTestCase",
+        "title": "Add cdmbot Test Case",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cocovs.createFormatterConfig",
+        "title": "Create Formatter Configuration",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cdmProject.sync",
+        "title": "Generate Build and Debug Configuration",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cdmProject.build",
+        "title": "Build",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cocovs.run",
+        "title": "Run",
+        "category": "CocoVS",
+        "icon": "$(play)"
+      },
+      {
+        "command": "cdmProject.debug",
+        "title": "Debug",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cocovs.debugExternal",
+        "title": "Debug via CdM Processors",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cocovs.openMemory",
+        "title": "Open RAM View",
+        "category": "CocoVS",
+        "icon": "$(file-binary)"
+      }
+    ],
+    "viewsWelcome": [
+      {
+        "view": "workbench.debug.welcome",
+        "contents": "[Debug with CocoVS](command:cdmProject.debug)",
+        "when": "isWorkspaceTrusted && (editorLangId == cocovs-assembly || editorLangId == cdm8-assembly || resourceFilename == cdm-project.json)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {"command": "cocovs.createTestSuite", "when": "view == workbench.view.testing and isWorkspaceTrusted", "group": "navigation"}
+      ],
+      "debug/toolBar": [{"command": "cocovs.openMemory", "when": "inDebugMode && debugType == cocovs-debug", "group": "navigation"}],
+      "editor/title": [
+        {
+          "command": "cocovs.run",
+          "when": "resourceLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/ && isWorkspaceTrusted",
+          "group": "navigation@10"
+        }
+      ]
+    },
+    "languages": [
+      {
+        "id": "cocovs-assembly",
+        "aliases": [
+          "CocoVS Assembly",
+          "cocovs-assembly"
+        ],
+        "extensions": [
+          ".asm",
+          ".mlb",
+          ".cdm8",
+          ".cdm8e",
+          ".cdm16",
+          ".cdm16e",
+          ".cocoasm"
+        ],
+        "configuration": "./languages/assembly.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "cocovs-assembly",
+        "scopeName": "source.asm.cocovs",
+        "path": "./syntaxes/assembly.tmLanguage.json"
+      }
+    ],
+    "semanticTokenTypes": [
+      {"id": "cocovsMnemonic", "superType": "function", "description": "Processor instruction or standard macro"},
+      {"id": "cocovsUserMacro", "description": "User-defined assembly macro"},
+      {"id": "cocovsLabel", "description": "Assembly label declaration or reference"},
+      {"id": "cocovsControlFlow", "description": "Assembly jump, call or return"}
+    ],
+    "semanticTokenScopes": [
+      {"scopes": {
+        "cocovsMnemonic": ["support.function"],
+        "cocovsUserMacro": ["keyword.control.macro"],
+        "cocovsLabel": ["entity.name.type.label"],
+        "cocovsControlFlow": ["support.constant.property-value.control-flow"]
+      }}
+    ],
+    "configurationDefaults": {
+      "[cocovs-assembly]": {
+        "editor.semanticHighlighting.enabled": true,
+        "editor.quickSuggestions": {"other": "on", "comments": "on", "strings": "off"}
+      }
+    },
+    "debuggers": [
+      {
+        "type": "cocovs-debug",
+        "label": "CocoVS CdM-8 / CdM-16",
+        "languages": ["cocovs-assembly", "cdm8-assembly", "cdm16-assembly"],
+        "initialConfigurations": [{"name": "CocoVS: Debug", "type": "cocovs-debug", "request": "launch"}],
+        "configurationAttributes": {
+          "launch": {
+
+            "properties": {
+              "root": {"type": "string", "description": "Project directory."},
+              "target": {"type": "string", "enum": ["cdm8", "cdm16"]},
+              "architecture": {"type": "string", "enum": ["harvard", "vonNeumann"]},
+              "artifacts": {
+                "type": "object",
+                "required": ["image", "debug"],
+                "properties": {"image": {"type": "string"}, "debug": {"type": "string"}}
+              },
+              "stopOnEntry": {"type": "boolean", "default": true},
+              "maxSteps": {"type": "integer", "minimum": 1, "maximum": 10000000}
+            }
+          }
+        }
+      }
+    ],
+    "breakpoints": [
+      {
+        "language": "cocovs-assembly"
+      }
+    ],
+    "keybindings": [
+      {"key":"ctrl+alt+w","command":"editor.action.insertSnippet","when":"editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/","args":{"langId":"cocovs-assembly","name":"While"}},
+      {"key":"ctrl+alt+f","command":"editor.action.insertSnippet","when":"editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/","args":{"langId":"cocovs-assembly","name":"For"}},
+      {"key":"ctrl+alt+i","command":"editor.action.insertSnippet","when":"editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/","args":{"langId":"cocovs-assembly","name":"If else"}},
+      {"key":"ctrl+alt+d","command":"editor.action.insertSnippet","when":"editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/","args":{"langId":"cocovs-assembly","name":"Description"}}
+    ],
+    "snippets": [
+      {
+        "language": "cocovs-assembly",
+        "path": "./languages/snippets.json"
+      }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "cocovs",
+        "properties": {
+          "project": {
+            "type": "string",
+            "description": "Path to the project folder relative to this workspace."
+          }
+        },
+        "when": "customExecutionSupported"
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": "cdm-project.json",
+        "url": "./schemas/cdm-project.schema.json"
+      },
+      {
+        "fileMatch": "cocovs-format.json",
+        "url": "./schemas/cocovs-format.schema.json"
+      }
+    ],
+    "configuration": {
+      "title": "CocoVS",
+      "properties": {
+        "cocovs.target": {
+          "type": "string",
+          "enum": [
+            "cdm8",
+            "cdm8e",
+            "cdm16",
+            "cdm16e"
+          ],
+          "default": "cdm8",
+          "scope": "resource",
+          "description": "Default target for assembly files outside a project."
+        },
+        "cocovs.architecture": {
+          "type": "string",
+          "enum": [
+            "harvard",
+            "vonNeumann"
+          ],
+          "default": "vonNeumann",
+          "scope": "resource",
+          "description": "Default memory architecture for assembly files outside a project."
+        },
+        "cocovs.address": {
+          "type": "string",
+          "default": "ws://localhost:7001",
+          "scope": "resource",
+          "description": "Default WebSocket address of a CdM debugger."
+        },
+        "cocovs.openMemoryOnDebug": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Open the CdM-8 RAM panel beside the source when debugging starts."
+        },
+        "cocovs.maxSteps": {
+          "type": "integer",
+          "default": 100000,
+          "minimum": 1,
+          "maximum": 10000000,
+          "scope": "resource",
+          "description": "Instruction limit for local emulation."
+        },
+        "cocovs.pythonPath": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "Optional absolute path to the Python 3.10+ executable."
+        },
+        "cocovs.cocasPath": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "Optional absolute path to the CoCAS executable."
+        },
+        "cocovs.javaPath": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "Optional absolute path to the Java executable from a JDK 17+."
+        },
+        "cocovs.cdmbotPythonPath": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "Path to the Python executable in the environment containing cdmbot."
+        },
+        "cocovs.cdmbotJobs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32,
+          "default": 4,
+          "scope": "resource",
+          "description": "Number of concurrent cdmbot test cases."
+        },
+        "cocovs.cocoemuJar": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "Optional absolute path to the Cocoemu server JAR shipped with cdm-devkit."
+        },
+        "cdmProject.autoSyncOnSave": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "description": "Regenerate task and launch configuration on saving project assembly files."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.2.0"
+  }
+}

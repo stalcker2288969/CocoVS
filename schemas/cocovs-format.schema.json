@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CocoVS Formatter",
+  "type": "object",
+  "properties": {
+    "formatOnSave": {"type": "boolean", "default": true, "description": "Format assembly before saving."},
+    "indentSize": {"type": "integer", "minimum": 1, "maximum": 16, "default": 4, "description": "Spaces per level or visual width of a tab."},
+    "indentStyle": {"enum": ["spaces", "tabs"], "default": "spaces"},
+    "alignInlineComments": {"type": "boolean", "default": true, "description": "Align trailing comments in adjacent instructions."},
+    "commentColumn": {"type": "integer", "minimum": 0, "maximum": 240, "default": 0, "description": "Minimum 1-based column for trailing comments. Zero aligns each block automatically."}
+  }
+}

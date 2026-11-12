@@ -1,0 +1,87 @@
+{
+  "Program": {
+    "prefix": "program",
+    "body": [
+      "asect ${1:0}",
+      "${2:start}:",
+      "\t$0",
+      "\thalt",
+      "end"
+    ]
+  },
+  "Macro": {
+    "prefix": "macro",
+    "body": [
+      "# ${1:Description}",
+      "macro ${2:name}/${3:0}",
+      "\t$0",
+      "mend"
+    ]
+  },
+  "Include source": {
+    "prefix": "include",
+    "body": [
+      "# @include \"${1:lib/module.asm}\""
+    ]
+  },
+  "Import folder": {
+    "prefix": "importall",
+    "body": [
+      "# @include \"${1:lib}/*\""
+    ],
+    "description": "Import assembly sources from a folder"
+  },
+  "While": {
+    "prefix": "while",
+    "body": [
+      "while",
+      "\t${1:tst r0}",
+      "stays ${2:nz}",
+      "\t$0",
+      "wend"
+    ],
+    "description": "CoCAS while loop"
+  },
+  "For": {
+    "prefix": "for",
+    "body": [
+      "ldi ${1:r0}, ${2:10}",
+      "while",
+      "\ttst $1",
+      "stays nz",
+      "\tdec $1",
+      "\t$0",
+      "wend"
+    ],
+    "description": "Counted CoCAS loop using a register"
+  },
+  "If else": {
+    "prefix": "ifelse",
+    "body": [
+      "if",
+      "\t${1:tst r0}",
+      "is ${2:z}",
+      "then",
+      "\t${3:# then branch}",
+      "else",
+      "\t${4:# else branch}",
+      "fi",
+      "$0"
+    ],
+    "description": "CoCAS if / else block"
+  },
+  "Description": {
+    "prefix": [
+      "discript",
+      "describe"
+    ],
+    "body": [
+      "# ${1:Summary}",
+      "# @param ${2:r0} ${3:Input}",
+      "# @return ${4:r0} ${5:Result}",
+      "# @changed ${6:r1, PS} ${7:Modified registers or memory}",
+      "$0"
+    ],
+    "description": "Document a label or macro signature"
+  }
+}
