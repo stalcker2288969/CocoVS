@@ -1,6 +1,9 @@
 rsect routines
 
-# Loads the example value 42 into r0.
+# Summary
+# @param r0 Input
+# @return r0 Result
+# @changed r0, PS Modified registers or memory
 test_lable>
     ldi r0, 42
     rts

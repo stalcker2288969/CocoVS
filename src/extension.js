@@ -6,32 +6,40 @@ const path = require('node:path');
 const {build, artifactPaths} = require('./build');
 const {registerEditor} = require('./editor');
 const {createJob} = require('./jobs');
-const {ASSEMBLY, MANIFEST, TARGETS, confined, loadProject, locateProject, resolveSources, syncConfigs} = require('./project');
+const {ASSEMBLY, MANIFEST, PROJECT_BUILD, PROJECT_DEBUG, TARGETS, confined, loadProject, locateProject,
+  resolveSources, syncConfigs} = require('./project');
 const {runProgram} = require('./runtime');
 const {registerSetup} = require('./setup');
 const {DebugAdapter} = require('./debug-adapter');
 const {createDebugWorker} = require('./debug-worker');
 const {memoryView} = require('./memory-view');
 const {registerTesting} = require('./testing');
+const {fileKey} = require('./live-check');
 
 const OFFICIAL = 'cdm-processors.vscode-cdm-extension';
 const NAME = 'CocoVS';
 const LOCAL_DEBUG = ['cdm8', 'cdm16'];
 
 function activate(context) {
-  registerEditor(context);
-  registerTesting(context);
-  const updateMemory = memoryView(context);
   const output = vscode.window.createOutputChannel(NAME);
   const diagnostics = vscode.languages.createDiagnosticCollection('cocovs');
   const active = new Set();
   const reported = new Map();
+  const pendingReports = new Set();
+  let live = new Map();
+  let updateMemory;
   context.subscriptions.push(output, diagnostics);
   const showError = error => vscode.window.showErrorMessage('CocoVS: ' + error.message.split(/\r?\n/)[0]);
   const {setup, toolchain} = registerSetup(context, output, showError);
+  context.subscriptions.push(vscode.tasks.registerTaskProvider('cocovs', {provideTasks: () => [], resolveTask}));
   context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('cocovs-debug', {
     resolveDebugConfiguration(_folder, config) {
       if (!config.request) return {...config, ...localDebugConfig()};
+      if (config.name === PROJECT_DEBUG && config.root && config.preLaunchTask === PROJECT_BUILD) {
+        // Older generated profiles contain a task, static target settings and artifact paths.
+        config = {...config};
+        for (const key of ['preLaunchTask', 'artifacts', 'architecture', 'target']) delete config[key];
+      }
       return config;
     },
     async resolveDebugConfigurationWithSubstitutedVariables(folder, config, token) {
@@ -40,9 +48,16 @@ function activate(context) {
           const selectedFolder = folder ?? activeLaunchFolder();
           const launch = await withProgress('build for debug', async options => {
             await saveSources();
-            const job = await currentJob(selectedFolder, false);
+            let job;
+            if (config.name === PROJECT_DEBUG && config.root) {
+              const root = await fs.realpath(config.root);
+              if (selectedFolder) confined(await fs.realpath(selectedFolder.uri.fsPath), root);
+              job = createJob({workspace: root, task: true});
+            } else {
+              job = await currentJob(selectedFolder, false);
+            }
             if (!LOCAL_DEBUG.includes(job.config.target)) throw new Error('Local debugging is unavailable for ' + job.config.target + '.');
-            return withBuild(job, {...options, localDebug: true, java: job.config.target === 'cdm16'}, artifacts => localDebugConfig(job, artifacts));
+            return withLocalDebugBuild(job, options);
           }, token);
           if (!launch) return undefined;
           config = {...launch, ...config, root: launch.root, target: launch.target, artifacts: launch.artifacts};
@@ -70,7 +85,7 @@ function activate(context) {
         const status = detected.python ? detected :
           await toolchain.prepare({onOutput: chunk => output.append(String(chunk))});
         return createDebugWorker(status.python);
-      }, state => updateMemory(session, state));
+      }, state => updateMemory?.(session, state));
       return new vscode.DebugAdapterInlineImplementation({
         onDidSendMessage: messages.event,
         handleMessage: message => { void adapter.handleMessage(message); },
@@ -105,40 +120,82 @@ function activate(context) {
       target: settings.get('target'), architecture: settings.get('architecture'), address: settings.get('address')});
   }
 
-  function publish(job, problems) {
-    const key = artifactPaths(job).image;
+  function groupProblems(root, problems) {
     const byFile = new Map();
     for (const item of problems) {
       if (!Number.isSafeInteger(item.line) || item.line < 1) continue;
-      const file = path.resolve(job.root, item.file);
-      const line = item.line - 1;
-      const diagnostic = new vscode.Diagnostic(new vscode.Range(line, 0, line, 10000),
-        item.message || 'CoCAS diagnostic', item.warning ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error);
-      diagnostic.source = 'CoCAS';
-      if (!byFile.has(file)) byFile.set(file, []);
-      byFile.get(file).push(diagnostic);
+      const file = path.resolve(root, item.file);
+      const key = fileKey(file);
+      if (!byFile.has(key)) byFile.set(key, {file, items: []});
+      byFile.get(key).items.push(item);
     }
-    const affected = new Set([...(reported.get(key)?.keys() ?? []), ...byFile.keys()]);
-    if (byFile.size) reported.set(key, byFile);
-    else reported.delete(key);
-    for (const file of affected) {
-      const values = [...reported.values()].flatMap(project => project.get(file) ?? []);
+    return byFile;
+  }
+
+  function updateDiagnostics(affected) {
+    for (const [key, {file}] of affected) {
+      const issues = [...(live.get(key)?.items ?? []),
+        ...[...reported.values()].flatMap(report => report.issues.get(key)?.items ?? [])];
+      const document = vscode.workspace.textDocuments?.find(doc => doc.uri.scheme === 'file' && fileKey(doc.fileName) === key);
+      const seen = new Set();
+      const values = [];
+      for (const item of issues) {
+        const line = document ? Math.min(item.line - 1, document.lineCount - 1) : item.line - 1;
+        const source = document?.lineAt(line);
+        const start = source ? Math.min(item.column ?? source.firstNonWhitespaceCharacterIndex, source.text.length) : item.column ?? 0;
+        const end = source?.text.length ?? 10000;
+        const id = JSON.stringify([line, item.message, !!item.warning]);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const diagnostic = new vscode.Diagnostic(new vscode.Range(line, start, line, end),
+          item.message || 'CoCAS diagnostic', item.warning ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error);
+        diagnostic.source = 'CoCAS';
+        values.push(diagnostic);
+      }
       const uri = vscode.Uri.file(file);
       if (values.length) diagnostics.set(uri, values);
       else diagnostics.delete(uri);
     }
   }
 
+  function publishLive(problems) {
+    const previous = live;
+    live = groupProblems('.', problems);
+    updateDiagnostics(new Map([...previous, ...live]));
+  }
+
+  function publish(job, report, problems) {
+    const key = artifactPaths(job).image;
+    report.issues = groupProblems(job.root, problems);
+    const affected = new Map([...(reported.get(key)?.issues ?? []), ...report.issues]);
+    if (report.issues.size) reported.set(key, report);
+    else reported.delete(key);
+    updateDiagnostics(affected);
+  }
+
+  function invalidateBuild(file) {
+    const key = fileKey(file);
+    for (const report of pendingReports) if (report.sources.has(key)) report.stale = true;
+    const affected = new Map();
+    for (const [image, report] of reported) {
+      if (!report.sources.has(key)) continue;
+      for (const [key, value] of report.issues) affected.set(key, value);
+      reported.delete(image);
+    }
+    updateDiagnostics(affected);
+  }
+
   function localDebugConfig(job, artifacts) {
-    const defaults = {name: 'CocoVS: Debug', type: 'cocovs-debug', request: 'launch'};
+    const defaults = {name: 'CocoVS: Debug', type: 'cocovs-debug', request: 'launch', stopOnEntry: true};
     return job ? {...defaults, root: job.root, target: job.config.target, architecture: job.config.architecture, artifacts} : defaults;
   }
 
-  async function debug(job, artifacts, folder, external) {
-    if (LOCAL_DEBUG.includes(job.config.target) && !external) {
-      if (!await vscode.debug.startDebugging(folder, localDebugConfig(job, artifacts))) throw new Error('Could not start the CocoVS debugger. Check Debug Console.');
-      return;
-    }
+  function withLocalDebugBuild(job, options, onReady = launch => launch) {
+    return withBuild(job, {...options, localDebug: true, java: job.config.target === 'cdm16'},
+      artifacts => onReady(localDebugConfig(job, artifacts)));
+  }
+
+  async function debugExternal(job, artifacts, folder) {
     if (!vscode.extensions.getExtension(OFFICIAL)) {
       const choice = await vscode.window.showInformationMessage('Install CdM Processors for step debugging.', 'Install');
       if (choice !== 'Install') return;
@@ -161,17 +218,23 @@ function activate(context) {
     const key = artifactPaths(job, path.join(await fs.realpath(job.root), 'build')).image;
     if (active.has(key)) throw new Error('A build or run is already active for this output.');
     active.add(key);
+    const report = {sources: new Set([...job.sources, MANIFEST].map(file => fileKey(path.resolve(job.root, file))))};
+    pendingReports.add(report);
     try {
       const target = job.config.target;
       options.signal.throwIfAborted();
-      const status = target === 'custom' ? {} : await toolchain.prepare({java: options.java, onOutput: options.onOutput});
+      const status = target === 'custom' ? {} : await toolchain.prepare({
+        java: options.java, debug16: target === 'cdm16' && options.localDebug, onOutput: options.onOutput,
+      });
       options.signal.throwIfAborted();
-      const result = await build(job, status.cocas, {...options, python: status.python});
-      publish(job, result.problems);
-      if (!result.ok) throw new Error(result.message);
+      const result = await build(job, status.cocas, {...options, python: status.python,
+        debugPython: status.debugPython, language: vscode.env?.language});
+      if (!report.stale) publish(job, report, result.problems);
+      if (!result.ok) throw new Error(result.message + (result.details ? '\n\nCoCAS output:\n' + result.details : ''));
       options.onOutput('Built ' + result.artifacts.image + '\nSources: ' + result.artifacts.combined + '\n');
       return await onBuilt(result.artifacts, status);
     } finally {
+      pendingReports.delete(report);
       active.delete(key);
     }
   }
@@ -183,9 +246,16 @@ function activate(context) {
     if ((mode === 'debug' || mode === 'debugExternal') && !['cdm8', 'cdm8e', 'cdm16'].includes(target)) {
       throw new Error('CdM Processors debugging supports CdM-8, CdM-8e and CdM-16. Use a project runner for this target.');
     }
-    const java = mode === 'debug' && target === 'cdm16' || mode === 'run' && !job.config.runner && /^cdm16e?$/.test(target);
-    return withBuild(job, {...options, java, localDebug: mode === 'debug' || task}, async (artifacts, status) => {
-      if (mode === 'debug' || mode === 'debugExternal') await debug(job, artifacts, folder, mode === 'debugExternal');
+    if (mode === 'debug' && LOCAL_DEBUG.includes(target)) {
+      return withLocalDebugBuild(job, options, async launch => {
+        if (!await vscode.debug.startDebugging(folder, launch)) {
+          throw new Error('Could not start the CocoVS debugger. Check Debug Console.');
+        }
+      });
+    }
+    const java = mode === 'run' && !job.config.runner && /^cdm16e?$/.test(target);
+    return withBuild(job, {...options, java, localDebug: task}, async (artifacts, status) => {
+      if (mode === 'debug' || mode === 'debugExternal') await debugExternal(job, artifacts, folder);
       if (mode === 'run') {
         const state = await runProgram(job, artifacts, status, {
           ...options, maxSteps: vscode.workspace.getConfiguration('cocovs', vscode.Uri.file(job.root)).get('maxSteps'),
@@ -225,7 +295,8 @@ function activate(context) {
   }
 
   function resolveTask(task) {
-    const folder = task.scope;
+    const folders = vscode.workspace.workspaceFolders;
+    const folder = task.scope === vscode.TaskScope.Workspace && folders?.length === 1 ? folders[0] : task.scope;
     if (!folder?.uri || folder.uri.scheme !== 'file') return undefined;
     task.execution = new vscode.CustomExecution(async definition => {
       const write = new vscode.EventEmitter();
@@ -291,7 +362,6 @@ function activate(context) {
       try { await action(); } catch (error) { output.appendLine(error.message); showError(error); }
     }));
   }
-  context.subscriptions.push(vscode.tasks.registerTaskProvider('cocovs', {provideTasks: () => [], resolveTask}));
   context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(document => {
     if (!vscode.workspace.isTrusted || !vscode.workspace.getConfiguration('cdmProject', document.uri).get('autoSyncOnSave')) return;
     if (!ASSEMBLY.test(document.fileName) && path.basename(document.fileName) !== MANIFEST) return;
@@ -299,6 +369,14 @@ function activate(context) {
     if (!folder || !locateProject(document.fileName, folder.uri.fsPath)) return;
     try { sync(document); } catch (error) { showError(error); }
   }));
+  for (const [feature, initialize] of [
+    ['Editor', () => registerEditor(context, {toolchain, publishLive, invalidateBuild})],
+    ['Testing', () => registerTesting(context)],
+    ['Memory view', () => { updateMemory = memoryView(context); }],
+  ]) {
+    try { initialize(); }
+    catch (error) { output.appendLine(feature + ': ' + (error.stack ?? error.message)); }
+  }
 }
 
 module.exports = {activate};

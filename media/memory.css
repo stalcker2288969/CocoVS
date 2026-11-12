@@ -64,7 +64,81 @@ h2 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
 .watch-tools input { flex: 1; min-width: 100px; }
 .watch-actions { white-space: nowrap; }
 .watch-actions button { margin: 1px; }
-.color-picker, #stack-color { width: 25px; height: 20px; padding: 1px; vertical-align: middle; cursor: pointer; }
+.color-picker { width: 25px; height: 20px; padding: 2px; vertical-align: middle; }
+.color-picker::before, #stack-color::before, .color-swatch::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--swatch-color);
+  vertical-align: middle;
+}
+#stack-color::before { margin-right: 6px; }
+#color-dialog {
+  box-sizing: border-box;
+  inline-size: min(20rem, calc(100% - 24px));
+  max-block-size: calc(100% - 24px);
+  overflow: auto;
+  padding: 12px;
+  color: var(--vscode-editor-foreground);
+  background: var(--vscode-editorWidget-background);
+  border: 1px solid var(--vscode-widget-border, var(--vscode-focusBorder));
+  border-radius: 6px;
+}
+#color-dialog::backdrop { background: rgb(0 0 0 / 35%); }
+#color-plane {
+  position: relative;
+  block-size: clamp(80px, 28vh, 170px);
+  margin: 8px 0;
+  border: 1px solid var(--vscode-widget-border, transparent);
+  border-radius: 4px;
+  background: linear-gradient(transparent, #000), linear-gradient(to right, #fff, hsl(var(--hue, 0) 100% 50%));
+  cursor: crosshair;
+  touch-action: none;
+}
+#color-cursor {
+  position: absolute;
+  inline-size: 12px;
+  block-size: 12px;
+  left: var(--saturation);
+  top: var(--darkness);
+  transform: translate(-50%, -50%);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #000;
+  pointer-events: none;
+}
+.color-hue, .color-value { display: flex; align-items: center; gap: 8px; }
+#color-hue {
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  height: 9px;
+  padding: 0;
+  background: linear-gradient(to right, red, yellow, lime, cyan, blue, magenta, red);
+}
+#color-hue::-webkit-slider-thumb {
+  appearance: none;
+  inline-size: 14px;
+  block-size: 14px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: hsl(var(--hue, 0) 100% 50%);
+  box-shadow: 0 0 0 1px #000;
+}
+#color-preview {
+  inline-size: 24px;
+  block-size: 24px;
+  border-radius: 4px;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-focusBorder));
+  background: var(--swatch-color);
+}
+.color-swatches, .color-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-block: 8px; }
+.color-actions { justify-content: flex-end; margin-bottom: 0; }
+.color-swatch { min-width: 24px; min-height: 24px; }
+#color-value { width: 9ch; margin-left: 4px; }
+#color-error { color: var(--vscode-errorForeground); }
 .colored-label, tr.colored-label td:first-child {
   background: color-mix(in srgb, var(--label-color) 32%, var(--vscode-editorWidget-background));
 }

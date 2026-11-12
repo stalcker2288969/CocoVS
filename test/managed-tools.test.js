@@ -7,7 +7,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const {checksumFor, downloadArchive, platformAssets} = require('../src/managed-tools');
-const {command, createToolchain, processResult} = require('../src/tools');
+const {command, createToolchain, findDebug16Python, processResult} = require('../src/tools');
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-runtimes-'));
@@ -119,14 +119,69 @@ test('a clean installation provisions Python and CoCAS, adds Java on demand, the
     return results;
   };
   const tools = createToolchain(home, () => ({}), run, fetchImpl);
-  const [first, second] = await Promise.all([tools.prepare(), tools.prepare({java: true})]);
+  const installationLog = [];
+  const onOutput = chunk => installationLog.push(chunk);
+  const [first, second] = await Promise.all([
+    tools.prepare({onOutput}), tools.prepare({java: true, debug16: true, onOutput}),
+  ]);
   assert.equal(first.python.file, portablePython);
   assert.equal(first.java, undefined);
   assert.equal(second.java.file, portableJava);
   assert.equal(second.jar, jar);
+  assert.match(installationLog.join(''), /Preparing portable Python[\s\S]*Creating the cdm-devkit Python environment[\s\S]*Installing cdm-devkit/);
+  assert.match(installationLog.join(''), /Checking whether Python can load CoCAS[\s\S]*Cocoemu JAR: [\s\S]*Preparing Eclipse Temurin JDK 21[\s\S]*Download complete[\s\S]*SHA-256 verified[\s\S]*Extracting archive[\s\S]*JDK ready:[\s\S]*Toolchain ready/);
   const reused = await tools.prepare({java: true});
   assert.equal(reused.cocas.file, path.join(venv, venvBin, venvCocas));
   assert.equal(virtualEnvCreates, 1);
   assert.equal(installs, 1);
   assert.equal(calls.length, 4);
+});
+
+test('CdM-16 finds the Python behind a CoCAS launcher on PATH', async t => {
+  const root = await fixture(t);
+  const launcher = path.join(root, 'cocas-fixture');
+  const python = path.join(root, 'isolated environment', 'bin', 'python3.12');
+  const originalPath = process.env.PATH;
+  process.env.PATH = [root, originalPath].join(path.delimiter);
+  t.after(() => { process.env.PATH = originalPath; });
+
+  const run = async tool => ({code: tool.file === python ? 0 : 1});
+  for (const contents of ['#!' + python + '\n', '#!/bin/sh\n\'\'\'exec\' "' + python + '" "$0" "$@"\n']) {
+    await fs.writeFile(launcher, contents, {mode: 0o755});
+    assert.deepEqual(await findDebug16Python(command('cocas-fixture'), [], run), command(python));
+  }
+});
+
+test('CdM-16 provisions a compatible CoCAS Python even when the external launcher and JAR work', async t => {
+  const root = await fixture(t);
+  const cocas = path.join(root, 'external', 'cocas');
+  const jar = path.join(root, 'cocoemu-server.jar');
+  const systemPython = path.join(root, 'system', 'python3');
+  const java = path.join(root, 'jdk', 'java');
+  const home = path.join(root, 'managed');
+  const win = process.platform === 'win32';
+  const managedPython = path.join(home, 'devkit-0.2.3', win ? 'Scripts/python.exe' : 'bin/python');
+  await fs.writeFile(jar, '');
+  let created = false;
+  let installs = 0;
+  const result = (code, stdout = '') => ({code, stdout, stderr: ''});
+  const run = async (tool, args) => {
+    if (args.includes('--list-targets')) return tool.file === cocas ? result(0, 'cdm8 cdm16') : result(1);
+    if (args.includes('--list-modules')) return tool.file === java ? result(0, 'jdk.compiler@21.0.1') : result(1);
+    if (args.some(arg => arg.includes('IVaryingLengthSegment'))) return result(tool.file === managedPython && installs ? 0 : 1);
+    if (tool.file === systemPython) {
+      if (args.includes('venv')) created = true;
+      return result(0);
+    }
+    if (tool.file !== managedPython || !created) return result(1);
+    if (args.includes('install')) installs++;
+    return result(0);
+  };
+  const tools = createToolchain(home, () => ({cocasPath: cocas, cocoemuJar: jar, pythonPath: systemPython, javaPath: java}), run);
+  const first = await tools.prepare({debug16: true, java: true});
+  assert.deepEqual(first.debugPython, command(managedPython));
+  assert.equal(first.cocas.file, cocas);
+  assert.equal(first.jar, jar);
+  assert.deepEqual((await tools.prepare({debug16: true, java: true})).debugPython, first.debugPython);
+  assert.equal(installs, 1);
 });

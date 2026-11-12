@@ -42,7 +42,7 @@ test('sync updates managed task/debug configuration while preserving other entri
   const launch=readJsonc(path.join(vs,'launch.json'),{}).configurations;
   assert.equal(tasks.length,2);assert.equal(launch.length,2);
   assert.deepEqual(tasks[1], {label:'CdM Project: Compile',type:'cocovs',group:'build',problemMatcher:[]});
-  assert.equal(launch[1].preLaunchTask,'CdM Project: Compile');
+  assert.equal(launch[1].preLaunchTask, undefined);
 });
 test('keeps CdM-8 local run independent of its CDP debugger mode', t => {
   const root = fixture(t);

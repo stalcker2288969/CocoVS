@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vscode = require('vscode');
 const {ASSEMBLY, MANIFEST, confined, inferTarget, loadProject, locateProject, resolveSources, sourceDirective} = require('./project');
-const {branchTargets, colorTokens, completionKind, indexSymbols, operationAt, sourceLine, symbolAt} = require('./symbols');
+const {branchTargets, colorTokens, completionContext, indexSymbols, operationAt, sourceLine, symbolAt} = require('./symbols');
 const {externalInsertionLine, includeCandidates, includeContext} = require('./editor-support');
 const instructionSets = require('./instructions.json');
 const {callAt, instructionSignature, signature} = require('./signatures');
@@ -13,6 +13,7 @@ const {registerFormatter} = require('./format-editor');
 const {planRename} = require('./rename');
 const {lintRoutines} = require('./routine-lint');
 const {findCdmbot, editCdmbot} = require('./cdmbot');
+const {operandKinds, conditionNames} = require('./operands');
 
 const SELECTOR = ['cocovs-assembly', 'cdm8-assembly', 'cdm8e-assembly', 'cdm16-assembly', 'cdm16e-assembly'];
 const DIRECTIVES = 'asect rsect tplate dc db dw ds align ext end macro mend mpush mpop if is then else fi while stays wend do until break continue'.split(' ');
@@ -23,7 +24,7 @@ function fileKey(file) {
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
-function registerEditor(context) {
+function registerEditor(context, liveDiagnostics) {
   registerFormatter(context, SELECTOR);
   const indexes = new WeakMap();
   const semanticTypes = new vscode.SemanticTokensLegend(['cocovsMnemonic', 'cocovsUserMacro', 'cocovsLabel', 'cocovsControlFlow']);
@@ -51,8 +52,13 @@ function registerEditor(context) {
     }
     const setting = vscode.workspace.getConfiguration('cocovs', document.uri).get('target');
     const target = config?.target ?? inferTarget(document.fileName, document.languageId, setting);
-    const instructions = target === 'custom' ? config.instructions ?? [] : instructionSets[target] ?? [];
+    const instructions = target === 'custom' ? config?.instructions ?? [] : instructionSets[target] ?? [];
     return {root, config, target, instructions};
+  }
+
+  if (liveDiagnostics) {
+    const {registerLiveDiagnostics} = require('./live-diagnostics');
+    registerLiveDiagnostics(context, vscode, {selector: SELECTOR, projectInfo, ...liveDiagnostics});
   }
 
   async function available(document, token, info = projectInfo(document)) {
@@ -427,14 +433,39 @@ function registerEditor(context) {
       if (include) return includeItems(document, position, include, projectInfo(document).root);
       const documentation = documentationItems(document, position, line);
       if (documentation) return documentation;
-      const kind = completionKind(line, position.character);
-      if (!kind) return [];
+      const completion = completionContext(line, position.character);
+      if (!completion) return [];
       const info = projectInfo(document);
-      const {symbols} = await available(document, token, info);
-      const named = symbolItems(document, position, symbols, info, kind);
-      if (kind === 'operand') return named;
-      const keywords = [...new Set([...DIRECTIVES, ...info.instructions])];
-      return [...named, ...keywords.map(word => new vscode.CompletionItem(word, vscode.CompletionItemKind.Keyword))];
+      const keyword = word => new vscode.CompletionItem(word, vscode.CompletionItemKind.Keyword);
+      if (completion.kind === 'operation') {
+        const {symbols} = await available(document, token, info);
+        const macros = symbolItems(document, position, symbols, info, 'operation');
+        return [...macros, ...[...new Set([...DIRECTIVES, ...info.instructions])].map(keyword)];
+      }
+      // Most instructions can be completed without loading all imported files.
+      const {name} = completion;
+      let linked;
+      if (!info.instructions.includes(name.toLowerCase()) && !DIRECTIVES.includes(name.toLowerCase())) {
+        linked = await available(document, token, info);
+      }
+      const kinds = operandKinds(completion, info.target, info.instructions,
+        (linked?.symbols ?? getSymbols(document)).filter(symbol => symbol.kind === 'macro' && symbol.name === name));
+      const items = [];
+      if (kinds.includes('l')) {
+        linked ??= await available(document, token, info);
+        items.push(...symbolItems(document, position, linked.symbols, info, 'operand'));
+      }
+      if (!completion.expression) {
+        if (kinds.includes('r')) {
+          const count = info.target.startsWith('cdm16') ? 8 : 4;
+          items.push(...Array.from({length: count}, (_, index) => keyword('r' + index)));
+        }
+        if (kinds.includes('condition')) items.push(...conditionNames(info.target).map(keyword));
+        if (kinds.includes('conjunction')) items.push(keyword('and'), keyword('or'));
+      }
+      const replacement = new vscode.Range(position.line, completion.start, position.line, completion.end);
+      for (const item of items) item.range = replacement;
+      return items;
     }}, '"', "'", '/', ' ', ',', '@', ':'),
     vscode.languages.registerCodeActionsProvider(SELECTOR, {provideCodeActions(document, _range, context) {
       return context.diagnostics.filter(issue => issue.code === 'cocovs.external').flatMap(issue => {

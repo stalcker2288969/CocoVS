@@ -107,13 +107,24 @@ function memoryView(context) {
       '<th scope="col">Label</th><th scope="col">Address</th><th scope="col">Type</th><th scope="col">Value</th><th scope="col">Actions</th></tr></thead>' +
       '<tbody id="watch-rows"></tbody></table></div></section>' +
       '<details id="ram-section" open><summary>RAM</summary><div class="watch-tools">' +
-      '<label>Stack color <input id="stack-color" type="color" value="#aa7ad9"></label></div>' +
+      '<button id="stack-color" type="button">Stack color</button></div>' +
       '<div class="ram-nav" id="ram-nav" hidden>' +
       '<button id="ram-prev" type="button" aria-label="Previous RAM page">‹</button>' +
       '<label>Address <input id="ram-address" value="0x0000" size="8"></label>' +
       '<button id="ram-next" type="button" aria-label="Next RAM page">›</button></div>' +
       '<div class="scroll"><table aria-label="RAM bytes in hexadecimal" id="ram"></table></div>' +
       '<footer><span class="legend changed">Changed</span><span class="legend pc">PC</span><span class="legend sp">SP</span></footer></details>' +
+      '<dialog id="color-dialog" aria-labelledby="color-title"><form id="color-form">' +
+      '<h2 id="color-title">Choose a color</h2>' +
+      '<div id="color-plane" role="group" tabindex="0" aria-label="Saturation and brightness. Adjust with arrow keys.">' +
+      '<span id="color-cursor" aria-hidden="true"></span></div>' +
+      '<label class="color-hue">Hue <input id="color-hue" type="range" min="0" max="359" value="0"></label>' +
+      '<div id="color-swatches" class="color-swatches"></div>' +
+      '<div class="color-value"><span id="color-preview" aria-hidden="true"></span>' +
+      '<label>Hex color <input id="color-value" type="text" maxlength="7" spellcheck="false" placeholder="#569cd6"></label></div>' +
+      '<p id="color-error" role="alert"></p><div class="color-actions">' +
+      '<button id="color-reset" type="button">Reset</button><button id="color-cancel" type="button">Cancel</button>' +
+      '<button type="submit">Apply</button></div></form></dialog>' +
       '<script src="' + script + '"></script></body></html>';
     const messages = view.webview.onDidReceiveMessage(message => {
       void interact(message).catch(error => vscode.window.showErrorMessage('CocoVS: ' + error.message));

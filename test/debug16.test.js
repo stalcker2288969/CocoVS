@@ -26,9 +26,10 @@ async function exercise(t, architecture) {
   const toolchain = createToolchain(path.join(root, 'tools'), () => ({
     pythonPath: env.COCOVS_PYTHON, cocasPath: env.COCOVS_COCAS, javaPath: env.COCOVS_JAVA, cocoemuJar: env.COCOVS_JAR,
   }));
-  const tools = await toolchain.inspect();
-  const jar = await toolchain.findJar(tools.python, tools.cocas);
+  const tools = await toolchain.prepare({java: true, debug16: true});
+  const {jar, debugPython} = tools;
   assert.ok(jar && tools.java);
+  assert.ok(debugPython);
 
   const file = path.join(root, 'main.cdm16');
   await fs.writeFile(file, [
@@ -37,7 +38,7 @@ async function exercise(t, architecture) {
     '# @type: str', 'message: dc "Text"', 'end', '',
   ].join('\n'));
   const result = await build(createJob({file}), tools.cocas ?? command(env.COCOVS_COCAS ?? 'cocas'),
-    {python: tools.python, localDebug: true});
+    {debugPython, localDebug: true});
   assert.ok(result.ok, result.message);
   const events = new EventEmitter();
   const responses = new Map();

@@ -15,9 +15,10 @@ test('RAM view lays out 256 cells and marks modified bytes and processor pointer
     const classes = new Set();
     const children = [];
     const listeners = new Map();
-    return {classes, children, isConnected: true, appendChild: child => children.push(child),
+    return {classes, children, isConnected: true, appendChild: child => children.push(child), focus() {},
+      style: {setProperty() {}},
       addEventListener: (event, handler) => listeners.set(event, handler),
-      fire: event => listeners.get(event)?.(), setAttribute() {}, classList: {
+      fire: (event, detail) => listeners.get(event)?.(detail), setAttribute() {}, classList: {
       add: value => classes.add(value),
       remove: value => classes.delete(value),
       toggle: (value, enabled) => enabled ? classes.add(value) : classes.delete(value),
@@ -45,6 +46,20 @@ test('RAM view lays out 256 cells and marks modified bytes and processor pointer
   const watchSection = {...element(), open: true};
   const ramSection = {...element(), open: true};
   const ramAddress = {...element(), value: '0x0000'};
+  const stackPicker = element();
+  const colorDialog = element();
+  colorDialog.showModal = () => { colorDialog.open = true; };
+  colorDialog.close = () => { colorDialog.open = false; colorDialog.fire('close'); };
+  const colorValue = element();
+  const colorPlane = {...element(), getBoundingClientRect: () => ({left: 10, top: 20, width: 200, height: 100}),
+    setPointerCapture() {}};
+  const colorHue = element();
+  const colorPreview = element();
+  const colorTitle = element();
+  const colorForm = element();
+  const colorSwatches = element();
+  const colorReset = element();
+  const colorError = element();
   const sent = [];
   let handle;
   const script = fs.readFileSync(path.join(__dirname, '../media/memory.js'), 'utf8');
@@ -54,7 +69,11 @@ test('RAM view lays out 256 cells and marks modified bytes and processor pointer
     document: {
       getElementById: id => ({ram: table, status, 'control-registers': control, 'general-registers': general,
         'watch-rows': watchRows, 'watch-format': watchFormat, watches: watchTable, 'watch-empty': watchEmpty,
-        'watch-search': search, 'watch-section': watchSection, 'ram-section': ramSection, 'ram-address': ramAddress})[id],
+        'watch-search': search, 'watch-section': watchSection, 'ram-section': ramSection, 'ram-address': ramAddress,
+        'color-dialog': colorDialog, 'color-value': colorValue, 'color-title': colorTitle, 'color-form': colorForm,
+        'color-error': colorError, 'color-swatches': colorSwatches, 'color-reset': colorReset,
+        'color-cancel': element(), 'stack-color': stackPicker,
+        'color-plane': colorPlane, 'color-hue': colorHue, 'color-preview': colorPreview})[id],
       createElement: element,
     },
     window: {addEventListener: (_event, listener) => { handle = listener; }},
@@ -157,11 +176,39 @@ test('RAM view lays out 256 cells and marks modified bytes and processor pointer
   assert.equal(cells[0].textContent, 'EF');
   assert.ok(cells[0].classes.has('pc'));
   const colorKey = JSON.stringify(['main.cdm16', 'score']);
-  actions()[0].value = '#12aabb';
-  actions()[0].fire('change');
+  actions()[0].fire('click');
+  assert.equal(colorDialog.open, true);
+  assert.equal(colorTitle.textContent, 'Color for score');
+  colorPlane.fire('pointerdown', {button: 0, pointerId: 1, clientX: 210, clientY: 20});
+  colorHue.value = '120';
+  colorHue.fire('input');
+  assert.equal(colorValue.value, '#00ff00');
+  colorPlane.fire('keydown', {key: 'ArrowDown', shiftKey: true, preventDefault() {}});
+  assert.equal(colorValue.value, '#00e600');
+  colorValue.value = 'bad';
+  colorForm.fire('submit', {preventDefault() {}});
+  assert.match(colorError.textContent, /#569cd6/);
+  assert.equal(colorDialog.open, true);
+  colorValue.value = '#12AABB';
+  colorValue.fire('input');
+  assert.equal(colorHue.value, '186');
+  colorForm.fire('submit', {preventDefault() {}});
+  assert.equal(colorDialog.open, false);
   assert.equal(sent.at(-1).type, 'color');
   assert.equal(sent.at(-1).key, colorKey);
   assert.equal(sent.at(-1).color, '#12aabb');
+  stackPicker.fire('click');
+  colorPlane.fire('pointerdown', {button: 0, pointerId: 1, clientX: 10, clientY: 20});
+  colorForm.fire('submit', {preventDefault() {}});
+  assert.equal(sent.at(-1).key, 'stack');
+  assert.equal(sent.at(-1).color, '#ffffff');
+  stackPicker.fire('click');
+  colorSwatches.children[0].fire('click');
+  assert.equal(sent.at(-1).key, 'stack');
+  assert.equal(sent.at(-1).color, '#569cd6');
+  stackPicker.fire('click');
+  colorReset.fire('click');
+  assert.equal(sent.at(-1).color, null);
   render({...wide, sp: 0x0201, stackBytes: 2}, [], {labels: {[colorKey]: '#12aabb'}, stack: '#cca011'});
   assert.ok(cells[0].classes.has('colored-label'));
   assert.ok(cells[1].classes.has('colored-label'));

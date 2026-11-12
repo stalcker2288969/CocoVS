@@ -82,12 +82,41 @@ function branchTargets(text, instructions) {
   return targets;
 }
 
-function completionKind(line, column) {
+function operandList(line, code, start, end = code.length) {
+  const previous = [];
+  let depth = 0;
+  for (let index = start; index < end; index++) {
+    const character = code[index];
+    if (character === '(') depth++;
+    else if (character === ')') depth--;
+    else if (character === ',' && depth === 0) {
+      previous.push(line.slice(start, index).trim());
+      start = index + 1;
+    }
+    if (depth < 0) return undefined;
+  }
+  return {previous, start, depth};
+}
+
+function completionContext(line, column) {
   const code = sourceLine(line);
-  if (code.length < column || /^\s*#/.test(line) || code.slice(0, column) !== line.slice(0, column)) return undefined;
+  if (code.length < column || line[column] === '#' || /^\s*#/.test(line)) return undefined;
+  const declaration = labelPattern.exec(code);
+  if (declaration && column < declaration[0].length || macroPattern.test(code)) return undefined;
   const operation = operationAt(code);
-  if (operation && column > operation.end) return 'operand';
-  return 'operation';
+  if (!operation || column <= operation.end) return {kind: 'operation'};
+  if (!/\s/.test(code[operation.end])) return undefined;
+  const operands = operandList(line, code, operation.end, column);
+  if (!operands || operands.previous.includes('')) return undefined;
+  const {previous, start} = operands;
+  const prefix = line.slice(start, column);
+  if (prefix !== code.slice(start, column)) return undefined;
+  const match = /(?:^\s*|[+\-(]\s*)([A-Za-z_.][\w.]*)?$/.exec(prefix);
+  if (!match) return undefined;
+  const word = match[1] ?? '';
+  const end = column + (/^[\w.]*/.exec(code.slice(column))?.[0].length ?? 0);
+  return {kind: 'operand', name: operation.name, previous, start: column - word.length, end,
+    expression: !/^\s*(?:[A-Za-z_.][\w.]*)?$/.test(prefix)};
 }
 
 function colorTokens(line, macros, labels, instructions) {
@@ -128,4 +157,5 @@ function symbolAt(line, column) {
   return undefined;
 }
 
-module.exports = {branchTargets, colorTokens, completionKind, controlFlow, indexSymbols, operationAt, sourceLine, symbolAt};
+module.exports = {branchTargets, branches, colorTokens, completionContext, controlFlow, indexSymbols,
+  operandList, operationAt, sourceLine, symbolAt};

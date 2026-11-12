@@ -7,10 +7,12 @@ const path = require('node:path');
 const os = require('node:os');
 const {createJob} = require('../src/jobs');
 const {build, diagnostics, expandArgs} = require('../src/build');
+const {friendlyMessage} = require('../src/assembly-errors');
 const {decodeImage, runProgram} = require('../src/runtime');
-const {branchTargets, colorTokens, completionKind, indexSymbols, symbolAt} = require('../src/symbols');
+const {branchTargets, colorTokens, completionContext, indexSymbols, symbolAt} = require('../src/symbols');
 const {externalInsertionLine, includeCandidates, includeContext} = require('../src/editor-support');
 const {syncConfigs} = require('../src/project');
+const {command} = require('../src/tools');
 
 const placeholder = name => '$' + '{' + name + '}';
 
@@ -34,7 +36,8 @@ test('assembly target comes from the suffix or manifest and the task uses the ma
   assert.throws(() => createJob({file, workspace: root, task: true}), /cdm-project/);
   const {task, session} = syncConfigs(root, job.config, nested);
   assert.equal(task.project, 'a project');
-  assert.equal(session.artifacts.image, placeholder('workspaceFolder') + '/a project/build/out.img');
+  assert.equal(session.root, placeholder('workspaceFolder') + '/a project');
+  assert.equal(session.artifacts, undefined);
 });
 
 test('symbol documentation follows adjacent comments and matches exported and macro names', () => {
@@ -85,9 +88,9 @@ test('classifies branch opcodes, label operands and simple unresolved targets', 
   assert.deepEqual(branchTargets('  jsr init\n  beq missing\n  jmp r1\n  jsr init+1\nmacro abc/0\n  beq local\nmend', instructions), [
     {line: 0, name: 'init', column: 6}, {line: 1, name: 'missing', column: 6},
   ]);
-  assert.equal(completionKind('  jsr ', 6), 'operand');
-  assert.equal(completionKind('  js', 4), 'operation');
-  assert.equal(completionKind('  dc "text"', 10), undefined);
+  assert.equal(completionContext('  jsr ', 6).kind, 'operand');
+  assert.equal(completionContext('  js', 4).kind, 'operation');
+  assert.equal(completionContext('  dc "text"', 10), undefined);
   assert.deepEqual(indexSymbols('init: ext', false, true).map(symbol => [symbol.name, symbol.external]), [['init', true]]);
   assert.equal(externalInsertionLine('macro go/0\nasect 0\nmend\n# Section docs\nasect 5\n'), 3);
 });
@@ -119,6 +122,65 @@ test('CoCAS diagnostics handle Windows paths, multiple problems and color codes'
     {file: 'C:\\my project\\main.asm', line: 4, message: 'Unknown mnemonic', warning: false},
     {file: 'lib.asm', line: 2, message: 'Check label', warning: true},
   ]);
+});
+
+test('invalid operand counts and CoCAS errors with exit code zero do not replace a valid build', async t => {
+  const root = await fixture(t);
+  const file = path.join(root, 'main.asm');
+  const correct = 'asect 0\n    ldi r0, a\n    halt\na: dc "x,y", 2\nend\n';
+  await fs.writeFile(file, correct);
+  const job = createJob({file});
+  const assembler = command('cocas');
+  let stderr = '';
+  let invocations = 0;
+  const run = async (_tool, args) => {
+    invocations++;
+    await fs.writeFile(args[args.indexOf('-o') + 1], stderr ? 'incomplete image' : 'previous image');
+    await fs.writeFile(args[args.indexOf('--debug') + 1], '{}');
+    return {code: 0, stdout: '', stderr};
+  };
+  const good = await build(job, assembler, {}, run);
+  assert.equal(good.ok, true);
+  await fs.writeFile(file, correct.replace('ldi r0, a', 'ldi r0, a, a'));
+  const bad = await build(job, assembler, {}, run);
+  assert.equal(bad.ok, false);
+  assert.deepEqual(bad.problems, [{file, line: 2, warning: false, message: 'ldi: expected 2 arguments, got 3.'}]);
+  assert.equal(invocations, 1);
+  await fs.writeFile(file, correct);
+  for (const report of ['[Assembler] ERROR at ' + file + ', line 2\nInvalid instruction',
+    "line 2:12 extraneous input ',' expecting NEWLINE", '[Linker] ERROR\nMissing symbol']) {
+    stderr = report;
+    assert.equal((await build(job, assembler, {}, run)).ok, false);
+    assert.equal(await fs.readFile(good.artifacts.image, 'utf8'), 'previous image');
+    assert.match(await fs.readFile(good.artifacts.combined, 'utf8'), /ldi r0, a\n/);
+  }
+});
+
+test('explains an included module’s missing end and logs the original diagnostic once', async t => {
+  const root = await fixture(t);
+  const file = path.join(root, 'main.asm');
+  const library = path.join(root, 'lib.asm');
+  await fs.writeFile(file, '# @include "lib.asm"\nasect 0\nhalt\nend\n');
+  await fs.writeFile(library, 'rsect routines\n');
+  const raw = "[Assembler] \x1b[31mERROR\x1b[39m at lib.asm, line 2\nextraneous input '<EOF>' expecting {'asect', End, WORD}\n";
+  const output = [];
+  const result = await build(createJob({file}), command('cocas'), {
+    language: 'ru', onOutput: text => output.push(text),
+  }, async (_tool, _args, options) => {
+    assert.equal(options.onOutput, undefined);
+    return {code: 1, stdout: raw, stderr: raw};
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.problems.length, 1);
+  assert.match(result.message, /^lib\.asm:2 .*Неожиданный конец файла.*end/);
+  assert.equal(output.length, 0);
+  assert.match(result.details, /extraneous input '<EOF>'/);
+  assert.equal((result.details.match(/extraneous input/g) ?? []).length, 1);
+  assert.doesNotMatch(result.details, /\x1b/);
+  assert.match(friendlyMessage("extraneous input '<EOF>' expecting {'fi', End}", 'en', 'asect 0\nif\nend\n'),
+    /unclosed block/);
+  assert.match(friendlyMessage('Unresolved ext "sum"', 'en'), /sum>/);
+  assert.match(friendlyMessage('ldi: expected 2 operand(s), found 3.', 'ru'), /Ожидалось 2, указано 3/);
 });
 
 test('the raw image reader supports Logisim repeat syntax and rejects invalid data', () => {

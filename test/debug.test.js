@@ -19,7 +19,12 @@ test('CdM-8 DAP handles real CoCAS breakpoints, source steps, RAM and subroutine
 }, async t => {
   const root = await fs.mkdtemp(path.join(env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-debug-'));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
-  await fs.cp(path.resolve(__dirname, '../examples/multi-file'), root, {recursive: true});
+  await fs.mkdir(path.join(root, 'lib'));
+  await fs.writeFile(path.join(root, 'cdm-project.json'), JSON.stringify({entry: 'main.asm', target: 'cdm8'}));
+  await fs.writeFile(path.join(root, 'main.asm'),
+    '# @include "lib/routines.asm"\nload_value: ext\nasect 0\nstart:\n    jsr load_value\n    halt\nend\n');
+  await fs.writeFile(path.join(root, 'lib', 'routines.asm'),
+    'rsect routines\nload_value>\n    ldi r0, 42\n    rts\nend\n');
   const job = createJob({workspace: root, task: true});
   const result = await build(job, command(env.COCOVS_COCAS ?? 'cocas'));
   assert.equal(result.ok, true, result.message);

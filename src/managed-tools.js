@@ -59,19 +59,33 @@ function checksumFor(text, filename) {
   throw new Error('No SHA-256 checksum published for ' + filename + '.');
 }
 
-async function downloadArchive(link, filename, expected, fetchImpl) {
+const mib = bytes => (bytes / (1024 * 1024)).toFixed(1) + ' MiB';
+
+async function downloadArchive(link, filename, expected, fetchImpl, onOutput = () => {}) {
   if (!/^[\da-f]{64}$/i.test(expected ?? '')) throw new Error('Invalid SHA-256 checksum for runtime archive.');
   const response = await get(link, fetchImpl, 8 * 60_000);
   const maxBytes = 512 * 1024 * 1024;
+  const length = Number(response.headers.get('content-length'));
+  const total = length > 0 && !response.headers.get('content-encoding') ? length : undefined;
   let size = 0;
+  let lastProgress = Date.now();
+  if (total) onOutput('  Archive size: ' + mib(total) + '.\n');
   const limit = new Transform({transform(chunk, _encoding, callback) {
     size += chunk.length;
-    callback(size > maxBytes ? new Error('Runtime archive is larger than 512 MB.') : null, chunk);
+    if (size > maxBytes) return callback(new Error('Runtime archive is larger than 512 MB.'));
+    const now = Date.now();
+    if (now - lastProgress >= 5000) {
+      lastProgress = now;
+      onOutput('  Downloaded ' + mib(size) + (total ? ' / ' + mib(total) : '') + '.\n');
+    }
+    callback(null, chunk);
   }});
   await pipeline(Readable.fromWeb(response.body), limit, createWriteStream(filename, {flags: 'wx'}));
+  onOutput('  Download complete (' + mib(size) + '). Verifying SHA-256.\n');
   const hash = createHash('sha256');
   for await (const chunk of createReadStream(filename)) hash.update(chunk);
   if (hash.digest('hex') !== expected.toLowerCase()) throw new Error('Runtime archive checksum mismatch.');
+  onOutput('  SHA-256 verified.\n');
 }
 
 function managedTools(home, run, fetchImpl = globalThis.fetch) {
@@ -97,10 +111,13 @@ function managedTools(home, run, fetchImpl = globalThis.fetch) {
     const binary = path.relative(destination, executable);
     try {
       await fs.mkdir(unpacked);
-      await downloadArchive(spec.link, archive, spec.checksum, fetchImpl);
+      onOutput('  Downloading archive from ' + new URL(spec.link).hostname + '.\n');
+      await downloadArchive(spec.link, archive, spec.checksum, fetchImpl, onOutput);
+      onOutput('  Extracting archive.\n');
       const tar = {file: platform === 'win32' ? path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar', args: []};
       const extracted = await run(tar, ['-xf', archive, '-C', unpacked], {timeout: 180_000, onOutput});
       if (extracted.code) throw new Error('Could not extract runtime archive: ' + extracted.stderr.trim());
+      onOutput('  Checking extracted executable.\n');
       const entries = await fs.readdir(unpacked, {withFileTypes: true});
       const folders = entries.filter(entry => entry.isDirectory()).map(entry => path.join(unpacked, entry.name));
       const candidates = [unpacked, ...folders, ...folders.map(directory => path.join(directory, 'Contents', 'Home'))];
@@ -130,14 +147,16 @@ function managedTools(home, run, fetchImpl = globalThis.fetch) {
 
   async function installPython(probe, onOutput = () => {}) {
     const filename = assets().python;
-    onOutput('Downloading portable Python ' + PYTHON_VERSION + '...\n');
+    onOutput('Preparing portable Python ' + PYTHON_VERSION + ' (' + platform + '/' + process.arch + ').\n');
+    onOutput('  Fetching the published archive checksum.\n');
     const response = await get(PYTHON_BASE + '/SHA256SUMS', fetchImpl, 30_000);
     const checksum = checksumFor(await response.text(), filename);
     await installArchive({link: PYTHON_BASE + '/' + filename, checksum}, pythonRoot, python, probe, onOutput);
   }
 
   async function installJava(probe, onOutput = () => {}) {
-    onOutput('Downloading Eclipse Temurin JDK 21...\n');
+    onOutput('Preparing Eclipse Temurin JDK 21 (' + platform + '/' + process.arch + ').\n');
+    onOutput('  Looking up the archive and checksum via Adoptium.\n');
     const response = await get(assets().java, fetchImpl, 30_000);
     const entries = await response.json();
     const spec = entries?.[0]?.binary?.package;

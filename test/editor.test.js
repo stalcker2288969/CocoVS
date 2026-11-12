@@ -95,6 +95,25 @@ test('editor completes includes and imported symbols, colors references and navi
   assert.equal(candidate.additionalTextEdits[0].position.line, 2);
 
   const commentItems = line => completion.provideCompletionItems(document(main, line), new Position(0, line.length), token);
+  const suggestions = async line => (await commentItems(line)).map(item => item.label);
+  assert.ok((await suggestions('    ld')).includes('ldi'));
+  assert.ok((await suggestions('# @include "lib/m')).includes('math.asm'));
+  assert.deepEqual(await suggestions('    tst '), ['r0', 'r1', 'r2', 'r3']);
+  for (const line of ['    tst r0 ', '    tst r0, ', '    ldi r0 ', '    ldi r0 next',
+    '    ldi r0 r1, ', '    ldi , ', '    halt ', '    is z ']) {
+    assert.deepEqual(await suggestions(line), [], line);
+  }
+  assert.ok((await suggestions('    is ')).includes('z'));
+  assert.deepEqual(await suggestions('    is z, '), ['and', 'or']);
+  const completeInModule = line => completion.provideCompletionItems(
+    document(main, '# @include "lib/math.asm"\n' + line), new Position(1, line.length), token);
+  assert.ok((await completeInModule('    ldi r0, ')).some(item => item.label === 'calculate'));
+  assert.deepEqual((await completeInModule('    st r1, ')).map(item => item.label), ['r0', 'r1', 'r2', 'r3']);
+  assert.ok((await completeInModule('    dc "a,b", ')).some(item => item.label === 'calculate'));
+  assert.deepEqual(await completeInModule('    dc first second, '), []);
+  const macro = 'macro put/2\nmend\n    put r0, ';
+  assert.ok((await completion.provideCompletionItems(document(main, macro), new Position(2, 12), token))
+    .some(item => item.label === 'r0'));
   const tags = await commentItems('# @');
   assert.deepEqual(tags.map(item => item.label), ['@type', '@param', '@return', '@returns', '@changed']);
   assert.equal(tags[0].insertText, '@type: ');
@@ -106,6 +125,14 @@ test('editor completes includes and imported symbols, colors references and navi
   assert.ok((await commentItems('# @return ')).some(item => item.label === 'r0'));
   assert.ok((await commentItems('# @changed ')).some(item => item.label === 'PS'));
   assert.deepEqual(await commentItems('    dc "# @type: i"'), []);
+
+  const manifest = require('../package.json');
+  for (const language of ['cocovs-assembly', 'cdm8-assembly', 'cdm8e-assembly', 'cdm16-assembly', 'cdm16e-assembly']) {
+    const defaults = manifest.contributes.configurationDefaults['[' + language + ']'];
+    assert.deepEqual(defaults['editor.quickSuggestions'], {other: 'on', comments: 'on', strings: 'on'});
+    assert.equal(defaults['editor.suggestOnTriggerCharacters'], true);
+    assert.ok(manifest.activationEvents.includes('onLanguage:' + language));
+  }
 
   const hover = providers.registerHoverProvider;
   const documented = document(main, '# @param r0 Input\n# @return r1 Result\n# @changed PS Flags\nroutine:\n    rts');

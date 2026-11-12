@@ -9,6 +9,7 @@ asect 0
 # @return r0 Result
 # @changed r1, PS Modified registers or memory
 start:
+    ldi r0, text
     jsr test_lable  # some discript
     halt            # other descript
 

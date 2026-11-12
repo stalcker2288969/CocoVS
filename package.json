@@ -2,7 +2,7 @@
   "name": "cdm-project-tools",
   "displayName": "CocoVS",
   "description": "Coco-de-Mer assembly, local emulation and custom processor projects",
-  "version": "0.8.1",
+  "version": "0.8.8",
   "publisher": "cdm-project-community",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -29,6 +29,11 @@
   "main": "./src/extension.js",
   "activationEvents": [
     "onStartupFinished",
+    "onLanguage:cocovs-assembly",
+    "onLanguage:cdm8-assembly",
+    "onLanguage:cdm8e-assembly",
+    "onLanguage:cdm16-assembly",
+    "onLanguage:cdm16e-assembly",
     "onTaskType:cocovs",
     "onDebug:cocovs-debug",
     "onDebugResolve:cocovs-debug",
@@ -163,8 +168,35 @@
     ],
     "configurationDefaults": {
       "[cocovs-assembly]": {
+        "editor.minimap.showRegionSectionHeaders": false,
         "editor.semanticHighlighting.enabled": true,
-        "editor.quickSuggestions": {"other": "on", "comments": "on", "strings": "off"}
+        "editor.quickSuggestions": {"other": "on", "comments": "on", "strings": "on"},
+        "editor.suggestOnTriggerCharacters": true,
+        "editor.wordBasedSuggestions": "off"
+      },
+      "[cdm8-assembly]": {
+        "editor.minimap.showRegionSectionHeaders": false,
+        "editor.quickSuggestions": {"other": "on", "comments": "on", "strings": "on"},
+        "editor.suggestOnTriggerCharacters": true,
+        "editor.wordBasedSuggestions": "off"
+      },
+      "[cdm8e-assembly]": {
+        "editor.minimap.showRegionSectionHeaders": false,
+        "editor.quickSuggestions": {"other": "on", "comments": "on", "strings": "on"},
+        "editor.suggestOnTriggerCharacters": true,
+        "editor.wordBasedSuggestions": "off"
+      },
+      "[cdm16-assembly]": {
+        "editor.minimap.showRegionSectionHeaders": false,
+        "editor.quickSuggestions": {"other": "on", "comments": "on", "strings": "on"},
+        "editor.suggestOnTriggerCharacters": true,
+        "editor.wordBasedSuggestions": "off"
+      },
+      "[cdm16e-assembly]": {
+        "editor.minimap.showRegionSectionHeaders": false,
+        "editor.quickSuggestions": {"other": "on", "comments": "on", "strings": "on"},
+        "editor.suggestOnTriggerCharacters": true,
+        "editor.wordBasedSuggestions": "off"
       }
     },
     "debuggers": [
@@ -198,6 +230,8 @@
       }
     ],
     "keybindings": [
+      {"key":"ctrl+space","mac":"cmd+shift+.","command":"editor.action.triggerSuggest","when":"editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/"},
+      {"key":"ctrl+shift+space","command":"editor.action.triggerSuggest","when":"isMac && editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/"},
       {"key":"ctrl+alt+w","command":"editor.action.insertSnippet","when":"editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/","args":{"langId":"cocovs-assembly","name":"While"}},
       {"key":"ctrl+alt+f","command":"editor.action.insertSnippet","when":"editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/","args":{"langId":"cocovs-assembly","name":"For"}},
       {"key":"ctrl+alt+i","command":"editor.action.insertSnippet","when":"editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/","args":{"langId":"cocovs-assembly","name":"If else"}},
@@ -217,8 +251,7 @@
             "type": "string",
             "description": "Path to the project folder relative to this workspace."
           }
-        },
-        "when": "customExecutionSupported"
+        }
       }
     ],
     "jsonValidation": [
@@ -234,6 +267,12 @@
     "configuration": {
       "title": "CocoVS",
       "properties": {
+        "cocovs.liveDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Check assembly for syntax errors while editing and show them in Problems."
+        },
         "cocovs.target": {
           "type": "string",
           "enum": [

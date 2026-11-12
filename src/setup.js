@@ -34,8 +34,11 @@ function registerSetup(context, output, showError) {
     }
     if (choice === 'Install required tools' || choice === 'Set up CdM-16 tools') {
       const java = choice === 'Set up CdM-16 tools';
+      output.show(true);
       installation ??= vscode.window.withProgress({location: vscode.ProgressLocation.Notification,
-        title: 'CocoVS: Setting up tools'}, () => toolchain.prepare({java, onOutput: chunk => output.append(String(chunk))}))
+        title: 'CocoVS: Setting up tools'}, () => toolchain.prepare({
+        java, debug16: java, verbose: true, onOutput: chunk => output.append(String(chunk)),
+      }))
         .finally(() => { installation = undefined; });
       await installation;
       vscode.window.showInformationMessage('CocoVS toolchain is ready.');

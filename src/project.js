@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const MANIFEST = 'cdm-project.json';
+const PROJECT_DEBUG = 'CdM Project: Debug';
+const PROJECT_BUILD = 'CdM Project: Compile';
 const ASSEMBLY = /\.(?:asm|mlb|cdm8e?|cdm16e?|cocoasm)$/i;
 const INCLUDE = /^\s*(?:#|;)\s*@include\s+(?:"([^"]+)"|'([^']+)'|([^\s#;]+))\s*(?:[#;].*)?$/i;
 const TARGETS = ['cdm8', 'cdm8e', 'cdm16', 'cdm16e', 'custom'];
@@ -199,16 +201,15 @@ function syncConfigs(root, config, projectRoot = root) {
   if (!Array.isArray(tasks?.tasks) || !Array.isArray(launch?.configurations)) {
     throw new Error('Unexpected tasks.json or launch.json structure.');
   }
-  const label = 'CdM Project: Compile';
-  const name = 'CdM Project: Debug';
+  const label = PROJECT_BUILD;
+  const name = PROJECT_DEBUG;
   const relative = path.relative(path.resolve(root), confined(root, projectRoot)).split(path.sep).join('/');
   const task = {label, type: 'cocovs', group: 'build', problemMatcher: [], ...(relative ? {project: relative} : {})};
   const local = ['cdm8', 'cdm16'].includes(config.target);
   const folderVariable = '$' + '{workspaceFolder}' + (relative ? '/' + relative : '');
   const artifacts = {image: folderVariable + '/build/out.img', debug: folderVariable + '/build/out.dbg.json'};
   const session = local ? {
-    name, type: 'cocovs-debug', request: 'launch', root: folderVariable, architecture: config.architecture, target: config.target,
-    stopOnEntry: true, preLaunchTask: label, artifacts,
+    name, type: 'cocovs-debug', request: 'launch', root: folderVariable, stopOnEntry: true,
   } : config.target === 'cdm8e' ? {
     name, type: 'cdm', request: 'launch', target: config.target, architecture: config.architecture,
     environment: 'external',
@@ -226,4 +227,5 @@ function syncConfigs(root, config, projectRoot = root) {
   return {task, session};
 }
 
-module.exports = {ASSEMBLY, INCLUDE, MANIFEST, TARGETS, combinedSource, confined, inferTarget, loadProject, locateProject, readJsonc, resolveSources, sourceDirective, syncConfigs};
+module.exports = {ASSEMBLY, INCLUDE, MANIFEST, PROJECT_BUILD, PROJECT_DEBUG, TARGETS, combinedSource, confined,
+  inferTarget, loadProject, locateProject, readJsonc, resolveSources, sourceDirective, syncConfigs};

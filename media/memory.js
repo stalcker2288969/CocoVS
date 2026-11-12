@@ -14,6 +14,14 @@ const watchSection = document.getElementById('watch-section');
 const ramSection = document.getElementById('ram-section');
 const ramNav = document.getElementById('ram-nav');
 const stackPicker = document.getElementById('stack-color');
+const colorDialog = document.getElementById('color-dialog');
+const colorInput = document.getElementById('color-value');
+const colorError = document.getElementById('color-error');
+const colorPlane = document.getElementById('color-plane');
+const colorHue = document.getElementById('color-hue');
+const colorPreview = document.getElementById('color-preview');
+let colorSelection;
+let draftColor;
 const defaultStackColor = '#aa7ad9';
 let palette = {labels: {}};
 const ramAddress = document.getElementById('ram-address');
@@ -46,6 +54,119 @@ function append(parent, tag, label = '', className = '') {
   parent.appendChild(element);
   return element;
 }
+
+function selectColor(key, title, value, trigger) {
+  colorSelection = {session: previous.session, key, trigger};
+  document.getElementById('color-title').textContent = title;
+  colorInput.value = value;
+  draftColor = {hue: 0, saturation: 0, brightness: 0};
+  readHexColor();
+  colorDialog.showModal();
+}
+
+function updateColorControls() {
+  const {hue, saturation, brightness} = draftColor;
+  colorHue.value = String(Math.round(hue) % 360);
+  colorHue.style.setProperty('--hue', hue);
+  colorPlane.style.setProperty('--hue', hue);
+  colorPlane.style.setProperty('--saturation', saturation * 100 + '%');
+  colorPlane.style.setProperty('--darkness', (1 - brightness) * 100 + '%');
+  colorPreview.style.setProperty('--swatch-color', colorInput.value);
+  colorError.textContent = '';
+}
+
+function readHexColor() {
+  const value = colorInput.value.trim();
+  if (!/^#[0-9a-f]{6}$/i.test(value)) return;
+  const [red, green, blue] = value.slice(1).match(/../g).map(byte => parseInt(byte, 16) / 255);
+  const brightness = Math.max(red, green, blue);
+  const chroma = brightness - Math.min(red, green, blue);
+  let hue = draftColor.hue;
+  if (chroma) {
+    const sector = brightness === red ? (green - blue) / chroma :
+      brightness === green ? (blue - red) / chroma + 2 : (red - green) / chroma + 4;
+    hue = (sector * 60 + 360) % 360;
+  }
+  draftColor = {hue, saturation: brightness ? chroma / brightness : 0, brightness};
+  updateColorControls();
+}
+
+function writeHexColor() {
+  const {hue, saturation, brightness} = draftColor;
+  // The three RGB channels are the same HSV curve shifted around the hue wheel.
+  const rgb = [5, 3, 1].map(offset => {
+    const sector = (offset + hue / 60) % 6;
+    const channel = brightness * (1 - saturation * Math.max(0, Math.min(sector, 4 - sector, 1)));
+    return hex(Math.round(channel * 255)).toLowerCase();
+  });
+  colorInput.value = '#' + rgb.join('');
+  updateColorControls();
+}
+
+const clampColor = value => Math.min(1, Math.max(0, value));
+
+function setColorPoint(event) {
+  const bounds = colorPlane.getBoundingClientRect();
+  draftColor.saturation = clampColor((event.clientX - bounds.left) / bounds.width);
+  draftColor.brightness = 1 - clampColor((event.clientY - bounds.top) / bounds.height);
+  writeHexColor();
+}
+
+colorPlane.addEventListener('pointerdown', event => {
+  if (event.button !== 0) return;
+  colorPlane.setPointerCapture(event.pointerId);
+  setColorPoint(event);
+});
+colorPlane.addEventListener('pointermove', event => {
+  if (colorPlane.hasPointerCapture(event.pointerId)) setColorPoint(event);
+});
+colorPlane.addEventListener('keydown', event => {
+  const direction = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1]}[event.key];
+  if (!direction) return;
+  event.preventDefault();
+  const step = event.shiftKey ? 0.1 : 0.01;
+  draftColor.saturation = clampColor(draftColor.saturation + direction[0] * step);
+  draftColor.brightness = clampColor(draftColor.brightness + direction[1] * step);
+  writeHexColor();
+});
+colorHue.addEventListener('input', () => {
+  draftColor.hue = Number(colorHue.value);
+  writeHexColor();
+});
+colorInput.addEventListener('input', readHexColor);
+
+function applyColor(color) {
+  if (!colorSelection) return;
+  const {session, key} = colorSelection;
+  vscode.postMessage({type: 'color', session, key, color});
+  colorDialog.close();
+}
+
+const swatches = document.getElementById('color-swatches');
+for (const [name, color] of [
+  ['Blue', '#569cd6'], ['Cyan', '#4ec9b0'], ['Green', '#6a9955'], ['Yellow', '#dcdcaa'],
+  ['Orange', '#ce9178'], ['Red', '#f44747'], ['Pink', '#d16d9e'], ['Purple', defaultStackColor],
+]) {
+  const button = append(swatches, 'button', '', 'color-swatch');
+  button.type = 'button';
+  button.title = name + ' ' + color;
+  button.setAttribute('aria-label', button.title);
+  button.style.setProperty('--swatch-color', color);
+  button.addEventListener('click', () => applyColor(color));
+}
+document.getElementById('color-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const value = colorInput.value.trim();
+  if (/^#[0-9a-f]{6}$/i.test(value)) applyColor(value.toLowerCase());
+  else colorError.textContent = 'Enter a color like #569cd6.';
+});
+document.getElementById('color-reset').addEventListener('click', () => applyColor(null));
+document.getElementById('color-cancel').addEventListener('click', () => colorDialog.close());
+colorDialog.addEventListener('close', () => {
+  if (colorDialog.open) return;
+  if (colorSelection?.trigger?.isConnected) colorSelection.trigger.focus();
+  colorSelection = undefined;
+});
 
 function controlRegister(parent, name, className) {
   const card = append(parent, 'div', '', 'register-card');
@@ -213,15 +334,12 @@ function updateWatches(snapshot, before) {
       const tint = palette.labels[id];
       row.style?.setProperty('--label-color', tint ?? '');
       row.classList.toggle('colored-label', !!tint);
-      const picker = append(buttons, 'input', '', 'color-picker');
-      picker.type = 'color';
-      picker.value = tint ?? '#569cd6';
+      const picker = append(buttons, 'button', '', 'color-picker');
+      picker.type = 'button';
+      picker.style.setProperty('--swatch-color', tint ?? '#569cd6');
       picker.title = 'Color for ' + name;
       picker.setAttribute('aria-label', picker.title);
-      picker.addEventListener('change', () =>
-        vscode.postMessage({type: 'color', session: snapshot.session, key: id, color: picker.value}));
-      if (tint) action(buttons, '×', 'Clear color of ' + name, () =>
-        vscode.postMessage({type: 'color', session: snapshot.session, key: id, color: null}));
+      picker.addEventListener('click', () => selectColor(id, picker.title, tint ?? '#569cd6', picker));
       const pin = action(buttons, isPinned ? 'Unpin' : 'Pin', (isPinned ? 'Unpin ' : 'Pin ') + name, () => {
         if (pinned.has(id)) pinned.delete(id);
         else pinned.add(id);
@@ -304,8 +422,8 @@ ramAddress?.addEventListener('change', () => {
   changePage(/^[\da-f]{1,4}$/i.test(text) ? parseInt(text, 16) : page);
 });
 
-stackPicker?.addEventListener('change', () => {
-  if (previous) vscode.postMessage({type: 'color', session: previous.session, key: 'stack', color: stackPicker.value});
+stackPicker?.addEventListener('click', () => {
+  if (previous) selectColor('stack', 'Stack color', palette.stack ?? defaultStackColor, stackPicker);
 });
 
 window.addEventListener('message', ({data}) => {
@@ -332,7 +450,8 @@ window.addEventListener('message', ({data}) => {
   const nextPalette = data.colors ?? {labels: {}};
   const recolored = JSON.stringify(nextPalette) !== JSON.stringify(palette);
   palette = nextPalette;
-  if (stackPicker) stackPicker.value = palette.stack ?? defaultStackColor;
+  if (stackPicker) stackPicker.style.setProperty('--swatch-color', palette.stack ?? defaultStackColor);
+  if (colorDialog.open && colorSelection?.session !== snapshot.session) colorDialog.close();
   if (changed || recolored || pc !== before?.pc || sp !== before?.sp || snapshot.stackBytes !== before?.stackBytes) {
     renderRam(snapshot, comparison);
   }
