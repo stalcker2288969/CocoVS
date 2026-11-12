@@ -11,6 +11,7 @@ const {createDebugWorker} = require('../src/debug-worker');
 const {command} = require('../src/tools');
 const {createJob} = require('../src/jobs');
 const {build} = require('../src/build');
+const {decodeImage} = require('../src/runtime');
 
 const env = process.env;
 
@@ -104,4 +105,35 @@ test('CdM-8 DAP handles real CoCAS breakpoints, source steps, RAM and subroutine
   assert.equal(memoryUpdates.at(-1).status, 'ended');
   assert.equal(memoryUpdates.at(-1).registers[0], 42);
   assert.ok(Number.isInteger(memoryUpdates.at(-1).ps));
+});
+
+test('CdM-8 debugger follows unsigned branches after CMP', {
+  skip: env.COCOVS_INTEGRATION !== '1',
+}, async t => {
+  const root = await fs.mkdtemp(path.join(env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-cmp-'));
+  t.after(() => fs.rm(root, {recursive: true, force: true}));
+  const file = path.join(root, 'compare.cdm8');
+  await fs.writeFile(file, [
+    'asect 0', 'ldi r1, length', 'ld r1, r1', 'ldi r2, 1',
+    'if', '    cmp r1, r2', 'is hi', '    ldi r3, 1',
+    'else', '    if', '        cmp r1, r2', '    is lo', '        ldi r3, 2', '    fi',
+    'fi', 'halt', 'length: dc 0', 'end', '',
+  ].join('\n'));
+  const result = await build(createJob({file}), command(env.COCOVS_COCAS ?? 'cocas'));
+  assert.equal(result.ok, true, result.message);
+  const image = decodeImage(await fs.readFile(result.artifacts.image, 'utf8'), 256);
+  const debug = JSON.parse(await fs.readFile(result.artifacts.debug, 'utf8'));
+  const length = debug.dataLabels.find(label => label.name === 'length');
+  const worker = createDebugWorker(command(env.COCOVS_PYTHON ?? (process.platform === 'win32' ? 'python' : 'python3')));
+  t.after(() => worker.dispose());
+
+  for (const [input, branch, carryAndZero] of [[0, 2, 0], [1, 0, 10], [6, 1, 8], [255, 1, 8]]) {
+    image[length.address] = input;
+    await worker.request({command: 'start', image: image.toString('hex'), architecture: 'vonNeumann', locations: {}, limit: 100});
+    const state = await worker.request({command: 'execute', mode: 'continue', breakpoints: [],
+      startLine: null, startPc: 0, startSteps: 0, depth: 0, skipFirst: false});
+    assert.equal(state.reason, 'halt', 'N = ' + input);
+    assert.deepEqual(state.registers.slice(1), [input, 1, branch], 'N = ' + input);
+    assert.equal(state.ps & 0b1010, carryAndZero, 'N = ' + input);
+  }
 });

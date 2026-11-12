@@ -70,7 +70,12 @@ test('installed CoCAS, Python and Cocoemu compile and run CdM programs', {skip},
   }
   await t.test('links a project with an external symbol and reports errors from a dependency', async () => {
     const project = path.join(root, 'multi file');
-    await fs.cp(path.resolve(__dirname, '../examples/multi-file'), project, {recursive: true});
+    const dependency = path.join(project, 'lib', 'routines.asm');
+    await fs.mkdir(path.dirname(dependency), {recursive: true});
+    await fs.writeFile(path.join(project, 'cdm-project.json'), JSON.stringify({entry: 'main.asm', target: 'cdm8'}));
+    await fs.writeFile(path.join(project, 'main.asm'),
+      '# @include "lib/routines.asm"\nload_value: ext\nasect 0\n    jsr load_value\n    halt\nend\n');
+    await fs.writeFile(dependency, 'rsect routines\nload_value>\n    ldi r0, 42\n    rts\nend\n');
     const job = createJob({workspace: project, task: true});
     assert.deepEqual(job.sources, ['main.asm', 'lib/routines.asm']);
     const result = await build(job, status.cocas);
@@ -79,7 +84,6 @@ test('installed CoCAS, Python and Cocoemu compile and run CdM programs', {skip},
     assert.equal(state.reason, 'halt');
     assert.equal(state.registers[0], 42);
     const saved = await fs.readFile(result.artifacts.image);
-    const dependency = path.join(project, 'lib', 'routines.asm');
     await fs.writeFile(dependency, 'rsect routines\nload_value>\n    nonexistent\nend\n');
     const failure = await build(job, status.cocas);
     assert.equal(failure.ok, false);

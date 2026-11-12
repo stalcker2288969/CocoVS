@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.9
+
+- Fix the carry flag after CdM-8 `cmp` so unsigned conditions work in local execution and debugging.
+
 ## 0.8.8
 
 - Show toolchain detection, installation and download progress in the CocoVS output, including CdM-16 debug Python, Cocoemu and JDK checks.

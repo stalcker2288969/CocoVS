@@ -33,8 +33,8 @@ class CPU:
             return self.result(total, total > MASK, bool(~(a ^ b) & (a ^ total) & 128))
         if group in (3, 7):
             total = a - b
-            # The Mark 5 circuit clears C for CMP; SUB exposes the carry-out.
-            return self.result(total, group == 3 and a >= b, bool((a ^ b) & (a ^ total) & 128))
+            # Both SUB and CMP set C when subtraction does not borrow.
+            return self.result(total, a >= b, bool((a ^ b) & (a ^ total) & 128))
         return self.result({0: a, 4: a & b, 5: a | b, 6: a ^ b}[group])
 
     def alu_unary(self, operation, value):

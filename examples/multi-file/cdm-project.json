@@ -1,5 +1,5 @@
 {
-  "entry": "main.asm",
+  "entry": "sort_corrected.asm",
   "target": "cdm8",
   "architecture": "vonNeumann",
   "environment": "external",
