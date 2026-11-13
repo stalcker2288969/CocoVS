@@ -1,0 +1,4 @@
+interface:
+  display_name: "CdM Assembly"
+  short_description: "Write and debug CdM-8 and CdM-16 assembly"
+  default_prompt: "Use $cdm-assembly to write a CdM-8 routine and verify it with CoCAS."
