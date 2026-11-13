@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.12
+
+- Show each data label and its type in the hover tooltip for every RAM byte it covers.
+- Keep completion, hover and signature help available independently of live assembler diagnostics.
+- Add a Show Assembly Suggestions command for use when a keyboard shortcut is unavailable.
+- Show hover and parameter hints for documented instructions shared by CdM-8 and CdM-8e.
+- Keep reporting local operand errors if the assembler's temporary directory cannot be created.
+- Limit VSIX contents to the extension, documentation and examples.
+
 ## 0.8.11
 
 - Use the same hover layout for CdM-8 and CdM-16 instructions, including all supported operand forms.

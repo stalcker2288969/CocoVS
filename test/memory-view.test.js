@@ -107,7 +107,11 @@ test('RAM view lays out 256 cells and marks modified bytes and processor pointer
   assert.ok(!cells[0].classes.has('pc'));
   assert.ok(cells[1].classes.has('pc'));
   assert.ok(cells[1].classes.has('changed'));
-  assert.equal(cells[1].title, '0x01 · 0xFF · 255');
+  assert.equal(cells[0].title, '0x00 · 0x00 · 0');
+  assert.equal(cells[1].title, '0x01 · 0xFF · 255\nbuffer (bytes)');
+  assert.equal(cells[5].title, '0x05 · 0x00 · 0\nmessage (str)');
+  assert.equal(cells[6].title, '0x06 · 0x00 · 0');
+  assert.ok(!cells[5].classes.has('colored-label'));
   assert.deepEqual(formats(0), ['0xFF', '\u2014', '-1', '255', '11111111']);
   assert.deepEqual(flags(), ['1', '0', '0', '1']);
   assert.ok(general.children[0].classes.has('changed'));
@@ -127,6 +131,8 @@ test('RAM view lays out 256 cells and marks modified bytes and processor pointer
   assert.equal(detailsAt(1).children[1].textContent, '"Text"');
   assert.equal(watchRows.children[1].children[2].textContent, 'str');
   assert.equal(watchRows.children[1].children[1].textContent, '0x02 ROM');
+  assert.equal(cells[2].title, '0x02 · 0x00 · 0');
+  assert.match(cells[1].title, /buffer \(bytes\)$/);
   assert.ok(!cells[0].classes.has('pc'));
   assert.ok(!cells[1].classes.has('changed'));
   assert.match(status.textContent, /PC 0x00 \(ROM\)/);
@@ -174,6 +180,7 @@ test('RAM view lays out 256 cells and marks modified bytes and processor pointer
   ramSection.fire('toggle');
   assert.equal(headers.at(-1).textContent, '02F0');
   assert.equal(cells[0].textContent, 'EF');
+  assert.equal(cells[1].title, '0x0201 · 0xBE · 190\nscore (i16)');
   assert.ok(cells[0].classes.has('pc'));
   const colorKey = JSON.stringify(['main.cdm16', 'score']);
   actions()[0].fire('click');
@@ -212,6 +219,7 @@ test('RAM view lays out 256 cells and marks modified bytes and processor pointer
   render({...wide, sp: 0x0201, stackBytes: 2}, [], {labels: {[colorKey]: '#12aabb'}, stack: '#cca011'});
   assert.ok(cells[0].classes.has('colored-label'));
   assert.ok(cells[1].classes.has('colored-label'));
+  assert.equal(cells[1].title, '0x0201 · 0xBE · 190\nscore (i16)');
   assert.ok(cells[1].classes.has('stack-byte'));
   assert.ok(cells[2].classes.has('stack-byte'));
   assert.ok(!cells[2].classes.has('colored-label'));

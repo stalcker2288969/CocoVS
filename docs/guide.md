@@ -147,13 +147,17 @@ text:
 ## Разработка расширения
 
 ```powershell
-npm install
+npm ci
 npm test
 npm run package
 ```
 
-Для интеграционных тестов включи `COCOVS_INTEGRATION=1`. При необходимости задай `COCOVS_PYTHON`, `COCOVS_COCAS`, `COCOVS_JAVA` и `COCOVS_JAR`.
+Для интеграционных тестов включи `COCOVS_INTEGRATION=1`. При необходимости задай `COCOVS_PYTHON`, `COCOVS_COCAS`, `COCOVS_JAVA` и `COCOVS_JAR`. Если cdmbot недоступен, `COCOVS_SKIP_CDMBOT=1` отключает только его интеграционный тест.
+
+Чтобы проверить подсказки в настоящем VS Code, запусти `npm install --no-save --package-lock=false @vscode/test-electron@2.5.2`, затем `npm run test:host`. Можно задать `COCOVS_VSCODE` с путём к установленному исполняемому файлу VS Code. На Linux без графической сессии используй `xvfb-run -a npm run test:host`.
 
 ## Публикация в Visual Studio Marketplace
 
-Запусти `npm run package`, чтобы собрать `.vsix`, затем установи пакет через **Extensions → Install from VSIX…** для проверки. Для публикации нужен доступ к издателю, указанному в `package.json`. Если используешь другой ID издателя, обнови `publisher` и пересобери пакет. После входа в `vsce` опубликуй проверенный пакет командой `npx vsce publish --packagePath cdm-project-tools-0.8.3.vsix`.
+Запусти `npm run package` и установи полученный файл через **Extensions: Install from VSIX...** в Visual Studio Code. Имя пакета имеет формат `cdm-project-tools-<version>.vsix`, где версия берётся из `package.json`.
+
+В [панели управления Marketplace](https://marketplace.visualstudio.com/manage) открой издателя `cdm-project-community` и загрузи проверенный `.vsix`. Если публикуешь под другим издателем, обнови `publisher` в `package.json` и пересобери пакет. Подробнее о публикации через `vsce` и GitHub Actions в [документации VS Code](https://code.visualstudio.com/api/working-with-extensions/publishing-extension).

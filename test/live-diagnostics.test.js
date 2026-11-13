@@ -4,6 +4,16 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const {registerLiveDiagnostics} = require('../src/live-diagnostics');
+const {checkSyntax} = require('../src/live-check');
+
+test('local operand diagnostics survive an unavailable assembler staging directory', async () => {
+  const root = path.resolve(__dirname);
+  const file = path.join(root, 'main.asm');
+  const issues = await checkSyntax({root, target: 'cdm8', sources: [{file, text: 'ldi r0, 1, 2'}]},
+    {file: process.execPath, args: []}, {tempRoot: __filename, language: 'en'});
+  assert.equal(issues[0].file, file);
+  assert.match(issues[0].message, /expected 2 arguments, got 3/);
+});
 
 test('live diagnostics use unsaved editor buffers and clear when the line is fixed', {timeout: 5000}, async t => {
   const root = path.resolve(__dirname, '../examples/multi-file');

@@ -2,7 +2,7 @@
   "name": "cdm-project-tools",
   "displayName": "CocoVS",
   "description": "Coco-de-Mer assembly, local emulation and custom processor projects",
-  "version": "0.8.11",
+  "version": "0.8.12",
   "publisher": "cdm-project-community",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -27,6 +27,12 @@
     "Debuggers"
   ],
   "main": "./src/extension.js",
+  "files": [
+    "LICENSE", "CHANGELOG.md",
+    "src/*.js", "src/*.json", "runtime/*.py", "runtime/*.java",
+    "media/*.css", "media/*.js", "media/*.png", "languages/*.json", "syntaxes/*.json", "schemas/*.json",
+    "docs/*.md", "examples/**/*.asm", "examples/**/cdm-project.json", "THIRD_PARTY_NOTICES.txt"
+  ],
   "activationEvents": [
     "onStartupFinished",
     "onLanguage:cocovs-assembly",
@@ -48,6 +54,11 @@
   },
   "contributes": {
     "commands": [
+      {
+        "command": "cocovs.showSuggestions",
+        "title": "Show Assembly Suggestions",
+        "category": "CocoVS"
+      },
       {
         "command": "cocovs.setup",
         "title": "Set Up Toolchain",
@@ -114,6 +125,9 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {"command": "cocovs.showSuggestions", "when": "editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/"}
+      ],
       "view/title": [
         {"command": "cocovs.createTestSuite", "when": "view == workbench.view.testing and isWorkspaceTrusted", "group": "navigation"}
       ],
@@ -364,6 +378,7 @@
   },
   "scripts": {
     "test": "node --test",
+    "test:host": "node test-host/run.js",
     "package": "vsce package --no-dependencies"
   },
   "devDependencies": {

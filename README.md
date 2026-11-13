@@ -1,28 +1,22 @@
-<img src="media/icon.png" alt="Логотип CocoVS" width="128">
+<img src="media/icon.png" alt="CocoVS logo" width="128">
 
 # CocoVS
 
-**Редактор, сборка и пошаговая отладка Coco-de-Mer Assembly в Visual Studio Code.**
+CocoVS brings Coco-de-Mer assembly editing, CoCAS builds, source-level debugging, and a live RAM view to Visual Studio Code. It supports single assembly files, projects with multiple source files, and custom processors.
 
-CocoVS переносит привычный цикл работы с CocoIDE в VS Code. Можно собрать программу, поставить точку останова, пройти по инструкциям и проверить регистры или память. Для многофайловых проектов есть переходы к определениям, переименование меток и интеграция с тестами cdmbot.
+## Features
 
-*CocoVS is a Visual Studio Code extension for Coco-de-Mer assembly, with CoCAS builds, source-level debugging and a live memory view.*
+- Complete mnemonics, operands, macros, labels, and `@include` paths. View instruction signatures and documentation as you edit.
+- Format assembly, jump to definitions, rename linked labels, and see CoCAS diagnostics in the **Problems** panel.
+- Build and run programs through CoCAS. Use `cdm-project.json` to configure the target, memory architecture, and source files for a project.
+- Step through CdM-8 and CdM-16 source, set breakpoints, and inspect registers, the stack, and RAM. Hover over a RAM byte to see its address, value, and any data labels with their types.
+- Run cdmbot test suites from the VS Code **Testing** view.
 
-## Возможности
+## Quick start
 
-| Задача | Что есть в CocoVS |
-| --- | --- |
-| Написать код | Подсветка, автодополнение, форматирование, подсказки для инструкций и макросов |
-| Собрать проект | Сборка через CoCAS, директивы `@include`, поддержка нескольких исходников |
-| Отладить программу | Точки останова, шаги по исходнику, регистры, стек и RAM для CdM-8 и CdM-16 |
-| Проверить изменения | Запуск cdmbot из панели Testing, переименование меток между файлами, предупреждения о стеке и `@changed` |
-
-## Быстрый старт
-
-1. Установи пакет `.vsix` в **Extensions → Install from VSIX…**.
-2. Открой файл `.asm` или пример из `examples/multi-file`.
-3. Запусти **CocoVS: Run** или нажми **F5** для отладки. Если инструменты отсутствуют, CocoVS предложит настроить их.
-4. На первой остановке открой **CocoVS RAM**, чтобы увидеть регистры, стек и ячейки памяти.
+1. Install **CocoVS** from the VS Code Extensions view. For a downloaded package, use **Extensions: Install from VSIX...**.
+2. Open or save an `.asm` file, or open the [multi-file example](examples/multi-file).
+3. Select **CocoVS: Run** in the Command Palette, or press **F5** to debug. CocoVS can set up the required tools when prompted. Building and running require a trusted workspace.
 
 ```asm
 asect 0
@@ -32,26 +26,34 @@ start:
 end
 ```
 
-## Поддержка процессоров
+Use `example.cdm16.asm` to select CdM-16 for a standalone file. For a plain `.asm` file, the **CocoVS: Target** setting supplies the default when the project and language mode do not specify a target.
 
-| Цель | Локальный запуск | Пошаговая отладка |
+### Assembly suggestions on macOS
+
+If another extension selects a different language for `.asm` files, use **Change Language Mode** and select **CocoVS Assembly**. Press **Cmd+Shift+.** or run **CocoVS: Show Assembly Suggestions** from the Command Palette. Mnemonic completion, hover documentation, and signature help work without a toolchain. Install CoCAS to enable assembler diagnostics.
+
+## Processor support
+
+| Target | Run | Debug |
 | --- | --- | --- |
-| CdM-8 | Да | Встроенная |
-| CdM-8e | Через runner проекта | Через CdM Processors |
-| CdM-16 | Да | Встроенная |
-| CdM-16e | Да | Через инструменты проекта |
-| Своя архитектура | Через runner проекта | Через инструменты проекта |
+| CdM-8 | Built-in emulator | Built-in debugger |
+| CdM-8e | Project runner | CdM Processors |
+| CdM-16 | Cocoemu | Built-in debugger |
+| CdM-16e | Cocoemu | Project tools |
+| Custom processor | Project runner | Project tools |
 
-[Руководство](docs/guide.md) · [Пример проекта](examples/multi-file) · [История изменений](CHANGELOG.md)
+CocoVS runs in desktop VS Code on Windows, macOS, and Linux. Automatic toolchain setup supports x64 and ARM64. See the [Russian user guide](docs/guide.md) and [changelog](CHANGELOG.md).
 
-## Разработка
+## Development
+
+Use Node.js 22 or later.
 
 ```sh
-npm install
+npm ci
 npm test
 npm run package
 ```
 
-Встроенные тесты запускаются на Node.js. Интеграционные тесты с CoCAS, cdmbot и Cocoemu включаются через `COCOVS_INTEGRATION=1`. Инструкции по настройке и публикации есть в руководстве.
+Set `COCOVS_INTEGRATION=1` to run tests with CoCAS, cdmbot, and Cocoemu. The [user guide](docs/guide.md) includes toolchain and Marketplace publishing instructions.
 
-Лицензия [MIT](LICENSE). Сторонние компоненты перечислены в [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+Licensed under [MIT](LICENSE). See [third-party notices](THIRD_PARTY_NOTICES.txt).

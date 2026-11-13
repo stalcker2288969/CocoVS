@@ -262,6 +262,7 @@ function watchValue(bytes, format) {
 }
 
 const labelKey = label => JSON.stringify([label.file, label.name]);
+const labelType = label => label.dataType ?? (label.text ? 'str' : 'bytes');
 
 function typedValue(bytes, type) {
   if (type === 'str') return watchValue(bytes, 'text');
@@ -292,7 +293,7 @@ function updateWatches(snapshot, before) {
   const query = watchSearch?.value.trim().toLowerCase() ?? '';
   const labels = (snapshot.dataLabels ?? []).filter(label =>
     pinned.has(labelKey(label)) || watchSection.open && query.split(/\s+/).every(word => {
-      const kind = label.dataType ?? (label.text ? 'str' : 'bytes');
+      const kind = labelType(label);
       const alias = kind === 'str' ? 'text string' : /16$/.test(kind) ? 'word' : 'byte';
       return (label.name + ' ' + label.kind + ' ' + kind + ' ' + alias).toLowerCase().includes(word);
     }));
@@ -305,7 +306,8 @@ function updateWatches(snapshot, before) {
     watchKey = key;
     watchRows.replaceChildren();
     watchViews = labels.map(label => {
-      const {name, address, length, kind, text, dataType = text ? 'str' : 'bytes', file, line} = label;
+      const {name, address, length, kind, file, line} = label;
+      const dataType = labelType(label);
       const id = labelKey(label);
       const isPinned = pinned.has(id);
       const rom = kind !== 'ds' && typeof snapshot.rom === 'string';
@@ -370,12 +372,16 @@ function renderRam(snapshot, before) {
   if (ramNav) ramNav.hidden = !wide;
   if (ramAddress && document.activeElement !== ramAddress) ramAddress.value = '0x' + hex(page, width);
   const labelColors = [];
+  const cellLabels = [];
   for (const label of snapshot.dataLabels ?? []) {
+    if (snapshot.rom && label.kind !== 'ds') continue;
     const tint = palette.labels[labelKey(label)];
-    if (!tint || snapshot.rom && label.kind !== 'ds') continue;
+    const description = label.name + ' (' + labelType(label) + ')';
     const end = Math.min(page + cells.length, label.address + label.length);
     for (let address = Math.max(page, label.address); address < end; address++) {
-      labelColors[address - page] ??= tint;
+      const index = address - page;
+      if (tint) labelColors[index] ??= tint;
+      (cellLabels[index] ??= []).push(description);
     }
   }
   const mask = wide ? 0xffff : 0xff;
@@ -387,6 +393,7 @@ function renderRam(snapshot, before) {
     if (index % 16 === 0) rowHeaders[index / 16].textContent = hex(address, width);
     cell.textContent = byte;
     cell.title = '0x' + hex(address, width) + ' \u00b7 0x' + byte + ' \u00b7 ' + parseInt(byte, 16);
+    if (cellLabels[index]) cell.title += '\n' + cellLabels[index].join('\n');
     cell.classList.toggle('changed', !!before && before.ram.slice(address * 2, address * 2 + 2).toUpperCase() !== byte);
     cell.classList.toggle('pc', snapshot.architecture === 'vonNeumann' && address === snapshot.pc);
     cell.classList.toggle('sp', address === snapshot.sp);

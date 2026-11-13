@@ -319,10 +319,6 @@ fi
 addsp 3  # discard j, i, pivot before rts
 rts
 
-#  Summary
-# @param r0 Input
-# @return r0 Result
-# @changed r1, PS Modified registers or memory
 main:
 ldi r0, arr
 ldi r1, 6
@@ -334,8 +330,4 @@ halt
 
 arr:
 dc 9, 2, 0, 1, 4, 10
-
-# @type: str
-text:
-dc "Hello World!"
 end

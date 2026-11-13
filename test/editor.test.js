@@ -37,6 +37,7 @@ test('editor completes includes and imported symbols, colors references and navi
     }
   }
   const api = {
+    commands: {registerCommand: () => dispose},
     Uri: {file: uri}, Position, Range, EndOfLine: {CRLF: 2}, SymbolKind: {}, CodeActionKind: {QuickFix: 'quickfix'},
     Location: class { constructor(target, range) { this.uri = target; this.range = range; } },
     EventEmitter: class { fire() {} dispose() {} },
@@ -154,6 +155,10 @@ test('editor completes includes and imported symbols, colors references and navi
   assert.equal(help.signatures[help.activeSignature].parameters[help.activeParameter].label, 'destination');
   const narrow = await hover.provideHover(document(main, '    ldi r0, 42'), new Position(0, 5), token);
   assert.match(narrow.contents[0].value, /ldi\(destination, value\)[\s\S]*\*\*Inputs\*\*[\s\S]*\*\*Returns\*\*[\s\S]*receives the byte value/);
+  const narrowExtended = document(path.join(root, 'sample.cdm8e.asm'), '    ldi r0, 42');
+  assert.match((await hover.provideHover(narrowExtended, new Position(0, 5), token)).contents[0].value, /ldi\(destination, value\)/);
+  const extendedHelp = await providers.registerSignatureHelpProvider.provideSignatureHelp(narrowExtended, new Position(0, 14), token);
+  assert.equal(extendedHelp.signatures[0].parameters[extendedHelp.activeParameter].label, 'value');
   const add = await hover.provideHover(document(wide.fileName, '    add r0, r1, r2'), new Position(0, 5), token);
   assert.match(add.contents[0].value, /add\(first, second\)\nadd\(first, second, destination\)\nadd\(register, immediate\)/);
   assert.match(add.contents[0].value, /\*\*Inputs\*\*[\s\S]*immediate - constant value to add/);

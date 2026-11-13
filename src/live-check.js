@@ -21,8 +21,9 @@ async function checkSyntax({root, target, sources}, tool, {signal, language, tem
   if (!tool || !assembly.length) return describeProblems(local, root, textSources, language);
 
   signal?.throwIfAborted();
-  const stage = await fs.mkdtemp(path.join(tempRoot, 'cocovs-syntax-'));
+  let stage;
   try {
+    stage = await fs.mkdtemp(path.join(tempRoot, 'cocovs-syntax-'));
     const originals = new Map();
     const inputs = [];
     for (const {file, text} of sources) {
@@ -49,7 +50,7 @@ async function checkSyntax({root, target, sources}, tool, {signal, language, tem
     if (signal?.aborted) throw error;
     // The editor can still report operand problems when CoCAS cannot run.
   } finally {
-    await fs.rm(stage, {recursive: true, force: true, maxRetries: 2});
+    if (stage) await fs.rm(stage, {recursive: true, force: true, maxRetries: 2});
   }
   return describeProblems(local, root, textSources, language);
 }

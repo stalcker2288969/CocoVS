@@ -56,11 +56,6 @@ function registerEditor(context, liveDiagnostics) {
     return {root, config, target, instructions};
   }
 
-  if (liveDiagnostics) {
-    const {registerLiveDiagnostics} = require('./live-diagnostics');
-    registerLiveDiagnostics(context, vscode, {selector: SELECTOR, projectInfo, ...liveDiagnostics});
-  }
-
   async function available(document, token, info = projectInfo(document)) {
     const symbols = getSymbols(document).map(symbol => ({...symbol, uri: document.uri}));
     const result = {symbols, incomplete: false};
@@ -350,6 +345,7 @@ function registerEditor(context, liveDiagnostics) {
   }
 
   context.subscriptions.push(refreshColors, diagnostics, {dispose() { clearTimeout(timer); revision++; }},
+    vscode.commands.registerCommand('cocovs.showSuggestions', () => vscode.commands.executeCommand('editor.action.triggerSuggest')),
     vscode.workspace.onDidSaveTextDocument(refresh),
     vscode.workspace.onDidChangeTextDocument(event => {
       if (event.contentChanges.length && SELECTOR.includes(event.document.languageId)) scheduleHints();
@@ -532,6 +528,10 @@ function registerEditor(context, liveDiagnostics) {
     }, semanticTypes),
   );
   scheduleHints();
+  if (liveDiagnostics) {
+    const {registerLiveDiagnostics} = require('./live-diagnostics');
+    registerLiveDiagnostics(context, vscode, {selector: SELECTOR, projectInfo, ...liveDiagnostics});
+  }
 }
 
 module.exports = {registerEditor};

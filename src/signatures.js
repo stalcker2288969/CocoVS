@@ -71,7 +71,8 @@ function instructionSignatures(target, name) {
         ...(returns ? ['@returns ' + returns] : [])].join('\n'),
     }));
   }
-  if (target !== 'cdm8' || !Object.hasOwn(cdm8, mnemonic)) return [];
+  if (!['cdm8', 'cdm8e'].includes(target) || !Object.hasOwn(cdm8, mnemonic) ||
+      target === 'cdm8e' && !instructionSets.cdm8e.includes(mnemonic)) return [];
   const [summary, names, returns] = cdm8[mnemonic];
   return [{kind: 'instruction', name, documentation: [
     summary, ...names.map(parameter => '@param ' + parameter), '@returns ' + returns,

@@ -14,7 +14,7 @@ test('selected names are passed to cdmbot as literal glob patterns', () => {
 });
 
 test('cdmbot YAML creation, discovery, project checks and selected cases use the real runner', {
-  skip: process.env.COCOVS_INTEGRATION !== '1',
+  skip: process.env.COCOVS_INTEGRATION !== '1' || process.env.COCOVS_SKIP_CDMBOT === '1',
 }, async t => {
   const temp = process.env.COCOVS_TEST_TEMP ?? os.tmpdir();
   const root = await fs.mkdtemp(path.join(temp, 'cocovs-cdmbot-'));
