@@ -1,3 +1,5 @@
+<img src="media/icon.png" alt="Логотип CocoVS" width="128">
+
 # CocoVS
 
 **Редактор, сборка и пошаговая отладка Coco-de-Mer Assembly в Visual Studio Code.**
