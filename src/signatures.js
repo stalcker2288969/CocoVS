@@ -2,6 +2,8 @@
 
 const {operationAt, sourceLine} = require('./symbols');
 const {dataAnnotation} = require('./documentation');
+const instructionSets = require('./instructions.json');
+const cdm16 = require('./cdm16-docs');
 
 function documentation(text) {
   const summary = [];
@@ -42,7 +44,7 @@ function signature(symbol) {
   const params = symbol.kind === 'macro'
     ? Array.from({length: Math.min(symbol.arity, 64)}, (_, index) => docs.params[index] ?? {name: '$' + (index + 1), description: ''})
     : docs.params;
-  return {...docs, params, label: symbol.name + '(' + params.map(parameter => parameter.name).join(', ') + ')'};
+  return {...docs, params, label: symbol.syntax ?? symbol.name + '(' + params.map(parameter => parameter.name).join(', ') + ')'};
 }
 
 const cdm8 = {
@@ -57,14 +59,23 @@ const cdm8 = {
   ds: ['Reserve space for bytes.', ['count'], 'The reserved bytes are initialized to zero in the image.'],
 };
 
-function instructionSignature(target, name) {
+function instructionSignatures(target, name) {
   const mnemonic = name.toLowerCase();
-  if (target !== 'cdm8' || !Object.hasOwn(cdm8, mnemonic)) return undefined;
-  const details = cdm8[mnemonic];
-  const [summary, names, returns] = details;
-  return {kind: 'instruction', name, documentation: [
+  if (target === 'cdm16' || target === 'cdm16e') {
+    if (!instructionSets[target].includes(mnemonic)) return [];
+    const {summary, forms, inputs = {}, returns} = cdm16[mnemonic];
+    return forms.map(form => ({
+      kind: 'instruction', name, syntax: form ? name + ' ' + form : name,
+      documentation: [summary, ...(form ? form.split(', ').map(parameter =>
+        '@param ' + parameter + (inputs[parameter] ? ' ' + inputs[parameter] : '')) : []),
+        ...(returns ? ['@returns ' + returns] : [])].join('\n'),
+    }));
+  }
+  if (target !== 'cdm8' || !Object.hasOwn(cdm8, mnemonic)) return [];
+  const [summary, names, returns] = cdm8[mnemonic];
+  return [{kind: 'instruction', name, documentation: [
     summary, ...names.map(parameter => '@param ' + parameter), '@returns ' + returns,
-  ].join('\n')};
+  ].join('\n')}];
 }
 
-module.exports = {callAt, instructionSignature, signature};
+module.exports = {callAt, instructionSignatures, signature};

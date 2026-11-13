@@ -7,7 +7,7 @@ const {ASSEMBLY, MANIFEST, confined, inferTarget, loadProject, locateProject, re
 const {branchTargets, colorTokens, completionContext, indexSymbols, operationAt, sourceLine, symbolAt} = require('./symbols');
 const {externalInsertionLine, includeCandidates, includeContext} = require('./editor-support');
 const instructionSets = require('./instructions.json');
-const {callAt, instructionSignature, signature} = require('./signatures');
+const {callAt, instructionSignatures, signature} = require('./signatures');
 const {DATA_TYPES} = require('./documentation');
 const {registerFormatter} = require('./format-editor');
 const {planRename} = require('./rename');
@@ -363,14 +363,24 @@ function registerEditor(context, liveDiagnostics) {
       }
     }),
     vscode.languages.registerHoverProvider(SELECTOR, {async provideHover(document, position, token) {
-      let symbols = await lookup(document, position, token);
+      const symbols = await lookup(document, position, token);
       if (!symbols.length) {
         const line = document.lineAt(position.line).text;
-        const name = symbolAt(line, position.character);
-        const instruction = name && instructionSignature(projectInfo(document).target, name);
         const op = operationAt(sourceLine(line));
-        if (!instruction || op?.name !== name || position.character < op.column || position.character >= op.end) return undefined;
-        symbols = [instruction];
+        if (!op || position.character < op.column || position.character >= op.end) return undefined;
+        const instructions = instructionSignatures(projectInfo(document).target, op.name);
+        if (!instructions.length) return undefined;
+        const [first] = instructions;
+        const variants = instructions.map(signature);
+        const params = new Map(variants.flatMap(variant => variant.params)
+          .filter(parameter => parameter.name !== '...').map(parameter => [parameter.name, parameter]));
+        const heading = variants.map(({params}) => params.length
+          ? first.name + '(' + params.map(parameter => parameter.name).join(', ') + ')'
+          : first.name);
+        const markdown = new vscode.MarkdownString();
+        markdown.appendCodeblock(heading.join('\n'));
+        markdown.appendMarkdown(signatureMarkdown(first, {...variants[0], params: [...params.values()]}).value);
+        return new vscode.Hover([markdown]);
       }
       return new vscode.Hover(symbols.map(symbol => {
         const markdown = new vscode.MarkdownString();
@@ -397,9 +407,8 @@ function registerEditor(context, liveDiagnostics) {
           symbol.name === call.target && symbol.documentation);
       }
       if (!matches.length) {
-        const builtin = instructionSignature(projectInfo(document).target, call.name);
-        if (!builtin) return undefined;
-        matches = [builtin];
+        matches = instructionSignatures(projectInfo(document).target, call.name);
+        if (!matches.length) return undefined;
       }
       const help = new vscode.SignatureHelp();
       help.signatures = matches.map(symbol => {

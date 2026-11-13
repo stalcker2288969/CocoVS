@@ -322,12 +322,16 @@ rts
 main:
 ldi r0, arr
 ldi r1, 6
-push r1  # length
-push r0  # array address
-jsr sort_v3
-addsp 2  # no return slot: remove 2 args
+push r1      # length
+push r0      # array address
+jsr sort_v3  # hello
+addsp 2      # no return slot: remove 2 args
 halt
 
 arr:
 dc 9, 2, 0, 1, 4, 10
+
+# @type: str
+text:
+dc "Hello World!"
 end

@@ -2,7 +2,7 @@
   "name": "cdm-project-tools",
   "displayName": "CocoVS",
   "description": "Coco-de-Mer assembly, local emulation and custom processor projects",
-  "version": "0.8.9",
+  "version": "0.8.11",
   "publisher": "cdm-project-community",
   "license": "MIT",
   "icon": "media/icon.png",

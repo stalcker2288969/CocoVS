@@ -2,7 +2,7 @@
 
 ## Установка и первый запуск
 
-1. Установи `.vsix` через **Extensions → … → Install from VSIX…** или командой `code --install-extension cdm-project-tools-0.8.9.vsix`.
+1. Установи `.vsix` через **Extensions → … → Install from VSIX…** или командой `code --install-extension cdm-project-tools-0.8.11.vsix`.
 2. При первом запуске в доверенной папке выбери **Install required tools** или запусти сборку. CocoVS использует совместимые Python и CoCAS, если они найдены. В остальных случаях оно скачивает переносимый Python и устанавливает `cdm-devkit` в своё окружение.
 3. Чтобы повторить проверку или указать путь к уже установленному инструменту, вызови **CocoVS: Set Up Toolchain**. Настройки `cocovs.pythonPath`, `cocovs.cocasPath`, `cocovs.javaPath` и `cocovs.cocoemuJar` принимают абсолютные пути.
 

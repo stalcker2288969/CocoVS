@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.11
+
+- Use the same hover layout for CdM-8 and CdM-16 instructions, including all supported operand forms.
+
+## 0.8.10
+
+- Add instruction descriptions and operand syntax for CdM-16 and CdM-16e in hover and signature help.
+
 ## 0.8.9
 
 - Fix the carry flag after CdM-8 `cmp` so unsigned conditions work in local execution and debugging.

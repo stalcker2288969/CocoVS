@@ -47,6 +47,9 @@ test('editor completes includes and imported symbols, colors references and navi
       appendCodeblock(value) { this.value += value; }
     },
     Hover: class { constructor(contents) { this.contents = contents; } },
+    SignatureHelp: class {},
+    SignatureInformation: class { constructor(label) { this.label = label; } },
+    ParameterInformation: class { constructor(label) { this.label = label; } },
     TextEdit: {insert: (position, newText) => ({position, newText})},
     WorkspaceEdit: class { entries = []; replace(uri, range, text) { this.entries.push({uri, range, text}); } },
     CompletionItem: class { constructor(label, kind) { this.label = label; this.kind = kind; } },
@@ -142,6 +145,22 @@ test('editor completes includes and imported symbols, colors references and navi
   assert.match(details.contents[0].value, /Changed[\s\S]*PS Flags/);
 
   const semantic = providers.registerDocumentSemanticTokensProvider;
+  const wide = document(path.join(root, 'sample.cdm16.asm'), '    ldw r0, r1, r2');
+  const wideHover = await hover.provideHover(wide, new Position(0, 5), token);
+  assert.match(wideHover.contents[0].value, /ldw\(addressRegister, destination\)\nldw\(baseRegister, indexRegister, destination\)/);
+  assert.match(wideHover.contents[0].value, /Read from data memory[\s\S]*\*\*Inputs\*\*[\s\S]*\*\*Returns\*\*[\s\S]*16-bit word/);
+  assert.equal(await hover.provideHover(wide, new Position(0, 9), token), undefined);
+  const help = await providers.registerSignatureHelpProvider.provideSignatureHelp(wide, new Position(0, 15), token);
+  assert.equal(help.signatures[help.activeSignature].parameters[help.activeParameter].label, 'destination');
+  const narrow = await hover.provideHover(document(main, '    ldi r0, 42'), new Position(0, 5), token);
+  assert.match(narrow.contents[0].value, /ldi\(destination, value\)[\s\S]*\*\*Inputs\*\*[\s\S]*\*\*Returns\*\*[\s\S]*receives the byte value/);
+  const add = await hover.provideHover(document(wide.fileName, '    add r0, r1, r2'), new Position(0, 5), token);
+  assert.match(add.contents[0].value, /add\(first, second\)\nadd\(first, second, destination\)\nadd\(register, immediate\)/);
+  assert.match(add.contents[0].value, /\*\*Inputs\*\*[\s\S]*immediate - constant value to add/);
+  assert.match(add.contents[0].value, /\*\*Returns\*\*[\s\S]*low 16 bits of the sum/);
+  const extended = document(path.join(root, 'sample.cdm16e.asm'), '    swpw r0, r1');
+  assert.match((await hover.provideHover(extended, new Position(0, 5), token)).contents[0].value, /Atomically exchange/);
+  assert.equal(await hover.provideHover(document(wide.fileName, '    swpw r0, r1'), new Position(0, 5), token), undefined);
   const highlights = await semantic.provideDocumentSemanticTokens(mainDoc, token);
   assert.ok(highlights.some(([line, column, length, type]) => line === 3 && column === 4 && length === 3 && type === 3));
   assert.ok(highlights.some(([line, column, length, type]) => line === 3 && column === 8 && length === 9 && type === 2));
