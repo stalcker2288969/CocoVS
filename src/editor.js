@@ -13,7 +13,7 @@ const {registerFormatter} = require('./format-editor');
 const {planRename} = require('./rename');
 const {lintRoutines} = require('./routine-lint');
 const {findCdmbot, editCdmbot} = require('./cdmbot');
-const {operandKinds, conditionNames} = require('./operands');
+const {operandKinds, conditionNames, comparisonConditions} = require('./operands');
 
 const SELECTOR = ['cocovs-assembly', 'cdm8-assembly', 'cdm8e-assembly', 'cdm16-assembly', 'cdm16e-assembly'];
 const DIRECTIVES = 'asect rsect tplate dc db dw ds align ext end macro mend mpush mpop if is then else fi while stays wend do until break continue'.split(' ');
@@ -465,13 +465,25 @@ function registerEditor(context, liveDiagnostics) {
           const count = info.target.startsWith('cdm16') ? 8 : 4;
           items.push(...Array.from({length: count}, (_, index) => keyword('r' + index)));
         }
-        if (kinds.includes('condition')) items.push(...conditionNames(info.target).map(keyword));
+        if (kinds.includes('condition')) {
+          items.push(...conditionNames(info.target).map(keyword));
+          for (const {alias, condition, signedness} of comparisonConditions(info.target)) {
+            const item = keyword(alias + (signedness ? ' (' + signedness + ')' : '') + ' → ' + condition);
+            item.insertText = condition;
+            item.filterText = alias;
+            item.detail = signedness === 'signed' ? 'Знаковое сравнение (s = signed)' :
+              signedness === 'unsigned' ? 'Беззнаковое сравнение (u = unsigned)' : 'Равенство / неравенство';
+            item.documentation = 'cmp left, right: left ' + alias.replace(/[su]$/, '') +
+              ' right. Вставить ' + condition + '.';
+            items.push(item);
+          }
+        }
         if (kinds.includes('conjunction')) items.push(keyword('and'), keyword('or'));
       }
       const replacement = new vscode.Range(position.line, completion.start, position.line, completion.end);
       for (const item of items) item.range = replacement;
       return items;
-    }}, '"', "'", '/', ' ', ',', '@', ':'),
+    }}, '"', "'", '/', ' ', ',', '@', ':', '<', '>', '=', '!'),
     vscode.languages.registerCodeActionsProvider(SELECTOR, {provideCodeActions(document, _range, context) {
       return context.diagnostics.filter(issue => issue.code === 'cocovs.external').flatMap(issue => {
         const name = document.getText(issue.range);

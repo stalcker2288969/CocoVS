@@ -101,9 +101,11 @@ function operandList(line, code, start, end = code.length) {
 function completionContext(line, column) {
   const code = sourceLine(line);
   if (code.length < column || line[column] === '#' || /^\s*#/.test(line)) return undefined;
+  // During editing, `stays >` can look like an exported label declaration.
+  const condition = /^\s*(is|stays|until)(?=\s+[<>!=])/i.exec(code);
   const declaration = labelPattern.exec(code);
-  if (declaration && column < declaration[0].length || macroPattern.test(code)) return undefined;
-  const operation = operationAt(code);
+  if (!condition && declaration && column < declaration[0].length || macroPattern.test(code)) return undefined;
+  const operation = condition ? {name: condition[1], end: condition[0].length} : operationAt(code);
   if (!operation || column <= operation.end) return {kind: 'operation'};
   if (!/\s/.test(code[operation.end])) return undefined;
   const operands = operandList(line, code, operation.end, column);
@@ -111,6 +113,15 @@ function completionContext(line, column) {
   const {previous, start} = operands;
   const prefix = line.slice(start, column);
   if (prefix !== code.slice(start, column)) return undefined;
+  // Symbolic comparisons are editor aliases only, valid in condition slots.
+  if (/^(?:is|stays|until)$/i.test(operation.name) && !previous.length) {
+    const comparison = /^\s*([<>]=?[su]?|[=!]=?)$/i.exec(prefix);
+    if (comparison) {
+      const end = column + /^[^\s,#]*/.exec(code.slice(column))[0].length;
+      return {kind: 'operand', name: operation.name, previous,
+        start: column - comparison[1].length, end, expression: false};
+    }
+  }
   const match = /(?:^\s*|[+\-(]\s*)([A-Za-z_.][\w.]*)?$/.exec(prefix);
   if (!match) return undefined;
   const word = match[1] ?? '';

@@ -109,6 +109,47 @@ test('editor completes includes and imported symbols, colors references and navi
   }
   assert.ok((await suggestions('    is ')).includes('z'));
   assert.deepEqual(await suggestions('    is z, '), ['and', 'or']);
+  const comparisons = {'==': 'eq', '!=': 'ne', '>s': 'gt', '>=s': 'ge', '<s': 'lt', '<=s': 'le',
+    '>u': 'hi', '>=u': 'hs', '<u': 'lo', '<=u': 'ls'};
+  for (const target of ['cdm8', 'cdm8e', 'cdm16', 'cdm16e']) {
+    const file = path.join(root, 'comparison.' + target + '.asm');
+    for (const clause of ['is', 'stays', 'until']) {
+      for (const [alias, condition] of Object.entries(comparisons)) {
+        const line = 'label: ' + clause + ' ' + alias + ' # keep comment';
+        const column = line.indexOf(' #');
+        const items = await completion.provideCompletionItems(document(file, line), new Position(0, column), token);
+        const item = items.find(item => item.filterText === alias);
+        assert.ok(item, target + ' ' + clause + ' ' + alias);
+        assert.equal(item.insertText, condition);
+        assert.equal(line.slice(0, item.range.start.character) + item.insertText + line.slice(item.range.end.character),
+          'label: ' + clause + ' ' + condition + ' # keep comment');
+        if (alias.endsWith('s')) assert.match(item.detail, /Знаковое/);
+        if (alias.endsWith('u')) assert.match(item.detail, /Беззнаковое/);
+      }
+    }
+  }
+  for (const operator of ['>', '>=', '<', '<=']) {
+    const items = await commentItems('    stays ' + operator);
+    assert.equal(items.filter(item => item.filterText === operator + 's' || item.filterText === operator + 'u').length, 2);
+  }
+  for (const clause of ['is', 'stays', 'until', 'IS']) {
+    for (const [alias, condition] of Object.entries(comparisons)) {
+      const line = '    ' + clause + ' ' + alias;
+      const item = (await commentItems(line)).find(item => item.filterText === alias);
+      assert.ok(item, line);
+      assert.equal(line.slice(0, item.range.start.character) + item.insertText, '    ' + clause + ' ' + condition);
+    }
+  }
+  const middle = '    is >=u, and # keep';
+  const midItems = await completion.provideCompletionItems(document(main, middle), new Position(0, 8), token);
+  const midItem = midItems.find(item => item.filterText === '>=u');
+  assert.equal(middle.slice(0, midItem.range.start.character) + midItem.insertText + middle.slice(midItem.range.end.character),
+    '    is hs, and # keep');
+  assert.ok((await commentItems('    is ')).some(item => item.filterText === '<s'));
+  assert.ok((await commentItems('    stays h')).some(item => item.label === 'hi'));
+  for (const line of ['# is >=', '    dc "is >=', '    cmp r0, >=', '    is >=s ', '    is z, >=', '    stays >= # comment']) {
+    assert.ok(!(await commentItems(line)).some(item => item.filterText), line);
+  }
   const completeInModule = line => completion.provideCompletionItems(
     document(main, '# @include "lib/math.asm"\n' + line), new Position(1, line.length), token);
   assert.ok((await completeInModule('    ldi r0, ')).some(item => item.label === 'calculate'));

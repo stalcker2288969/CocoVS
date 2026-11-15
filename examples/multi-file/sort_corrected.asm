@@ -318,7 +318,7 @@ fi
 
 addsp 3  # discard j, i, pivot before rts
 rts
-
+ldi r0, 10
 main:
 ldi r0, arr
 ldi r1, 6
@@ -330,4 +330,6 @@ halt
 
 arr:
 dc 9, 2, 0, 1, 4, 10
+res:
+ds 5
 end

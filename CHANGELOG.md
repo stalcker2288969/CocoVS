@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.13
+
+- Complete symbolic comparisons after `is`, `stays` and `until`, with explicit signed (`s`) and unsigned (`u`) variants that insert CoCAS condition codes.
+
 ## 0.8.12
 
 - Show each data label and its type in the hover tooltip for every RAM byte it covers.

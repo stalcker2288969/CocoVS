@@ -31,6 +31,17 @@ async function run() {
       const registers = await complete(3, 6 + mnemonic.length);
       assert.ok(registers.items.some(item => item.label === lastRegister), target + ' register completion');
 
+      for (const [clause, alias, condition] of [['stays', '>=u', 'hs'], ['is', '<s', 'lt'], ['until', '!=', 'ne']]) {
+        const input = '    ' + clause + ' ' + alias + ' # keep';
+        await editor.edit(edit => edit.replace(document.lineAt(2).range, input));
+        const items = await complete(2, input.indexOf(' #'));
+        const item = items.items.find(item => item.filterText === alias);
+        assert.ok(item, target + ' ' + clause + ' comparison completion');
+        assert.equal(item.insertText, condition);
+        await editor.edit(edit => edit.replace(item.range, item.insertText));
+        assert.equal(document.lineAt(2).text, '    ' + clause + ' ' + condition + ' # keep');
+      }
+
       const hover = await vscode.commands.executeCommand('vscode.executeHoverProvider', uri, new vscode.Position(1, 5));
       assert.ok(hover.some(item => item.contents.some(content => content.value?.includes(mnemonic + '('))), target + ' hover');
       const help = await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider',

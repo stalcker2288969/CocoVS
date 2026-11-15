@@ -83,6 +83,19 @@ function conditionNames(target) {
   return (instructionSets[target] ?? []).filter(name => name !== 'br' && branches.has(name)).map(name => name.slice(1));
 }
 
+// Relations describe the first operand of cmp relative to the second.
+function comparisonConditions(target) {
+  const supported = new Set(conditionNames(target));
+  return [
+    ['==', 'eq'], ['!=', 'ne'],
+    ['>s', 'gt', 'signed'], ['>=s', 'ge', 'signed'],
+    ['<s', 'lt', 'signed'], ['<=s', 'le', 'signed'],
+    ['>u', 'hi', 'unsigned'], ['>=u', 'hs', 'unsigned'],
+    ['<u', 'lo', 'unsigned'], ['<=u', 'ls', 'unsigned'],
+  ].filter(([, condition]) => supported.has(condition))
+    .map(([alias, condition, signedness]) => ({alias, condition, signedness}));
+}
+
 function operandProblems(sources, target) {
   const instructions = new Set(instructionSets[target] ?? []);
   const libraryMacros = new Set(sources.filter(source => /\.mlb$/i.test(source.file))
@@ -117,4 +130,4 @@ function operandProblems(sources, target) {
   return problems;
 }
 
-module.exports = {operandKinds, conditionNames, operandProblems};
+module.exports = {operandKinds, conditionNames, comparisonConditions, operandProblems};
