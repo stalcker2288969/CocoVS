@@ -6,7 +6,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const {createJob} = require('../src/jobs');
-const {build, diagnostics, expandArgs} = require('../src/build');
+const {artifactPaths, build, diagnostics, expandArgs} = require('../src/build');
 const {friendlyMessage} = require('../src/assembly-errors');
 const {decodeImage, runProgram} = require('../src/runtime');
 const {branchTargets, colorTokens, completionContext, indexSymbols, symbolAt} = require('../src/symbols');
@@ -38,6 +38,40 @@ test('assembly target comes from the suffix or manifest and the task uses the ma
   assert.equal(task.project, 'a project');
   assert.equal(session.root, placeholder('workspaceFolder') + '/a project');
   assert.equal(session.artifacts, undefined);
+});
+
+test('standalone artifacts stay beside nested sources while project artifacts stay at the project root', async t => {
+  const root = await fixture(t);
+  await fs.writeFile(path.join(root, 'shared.asm'), 'rsect shared\nend\n');
+  const fakeAssembler = async (_tool, args, options) => {
+    assert.equal(options.cwd, root);
+    await fs.writeFile(args[args.indexOf('-o') + 1], 'v2.0 raw\n00\n');
+    await fs.writeFile(args[args.indexOf('--debug') + 1], '{}');
+    return {code: 0, stdout: '', stderr: ''};
+  };
+  const images = [];
+  for (const directory of ['sorting', 'другая сортировка']) {
+    const local = path.join(root, directory);
+    await fs.mkdir(local);
+    const file = path.join(local, 'sort.asm');
+    await fs.writeFile(file, '# @include "../shared.asm"\nrun main\nmain:\nhalt\nend\n');
+    const job = createJob({file, workspace: root});
+    assert.equal(job.root, root); // Preserve workspace-relative includes and source maps.
+    const expected = artifactPaths(job);
+    assert.equal(expected.image, path.join(local, 'build', 'sort.img'));
+    const result = await build(job, command('cocas'), {}, fakeAssembler);
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.artifacts, expected);
+    for (const file of Object.values(result.artifacts)) await fs.access(file);
+    assert.match(await fs.readFile(result.artifacts.combined, 'utf8'), /shared\.asm/);
+    images.push(result.artifacts.image);
+  }
+  assert.notEqual(images[0], images[1]);
+  await assert.rejects(fs.access(path.join(root, 'build')), {code: 'ENOENT'});
+  await fs.writeFile(path.join(root, 'cdm-project.json'), JSON.stringify({entry: 'sorting/sort.asm', target: 'cdm8'}));
+  const project = createJob({file: path.join(root, 'sorting', 'sort.asm'), workspace: root});
+  const result = await build(project, command('cocas'), {}, fakeAssembler);
+  assert.equal(result.artifacts.image, path.join(root, 'build', 'out.img'));
 });
 
 test('symbol documentation follows adjacent comments and matches exported and macro names', () => {
@@ -93,6 +127,20 @@ test('classifies branch opcodes, label operands and simple unresolved targets', 
   assert.equal(completionContext('  dc "text"', 10), undefined);
   assert.deepEqual(indexSymbols('init: ext', false, true).map(symbol => [symbol.name, symbol.external]), [['init', true]]);
   assert.equal(externalInsertionLine('macro go/0\nasect 0\nmend\n# Section docs\nasect 5\n'), 3);
+});
+
+test('run uses directive highlighting while its target remains a label', () => {
+  const instructions = new Set(require('../src/instructions.json').cdm8);
+  assert.deepEqual(colorTokens('run main # run', new Set(), new Set(['main']), instructions), [
+    {column: 0, name: 'run', kind: 'directive'}, {column: 4, name: 'main', kind: 'label'},
+  ]);
+  assert.equal(colorTokens('  RUN main', new Set(), new Set(['main']), instructions)[0].kind, 'directive');
+  const grammar = require('../syntaxes/assembly.tmLanguage.json');
+  const ruleFor = line => grammar.patterns.find(rule => rule.begin && new RegExp(rule.begin).test(line));
+  assert.equal(ruleFor('run main').beginCaptures[3].name, 'keyword.control.cocovs');
+  assert.equal(ruleFor('entry: run main').beginCaptures[3].name, 'keyword.control.cocovs');
+  assert.equal(ruleFor('addsp -3').beginCaptures[3].name, 'support.function.instruction.cocovs');
+  assert.equal(ruleFor('run: dc 0').beginCaptures[1].name, 'entity.name.type.label.cocovs');
 });
 
 test('include completion uses the quoted path and suggests only eligible project entries', async t => {

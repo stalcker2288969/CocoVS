@@ -14,8 +14,9 @@ test('the native VS Code launch provider builds an active CdM-8 file with no lau
 }, async t => {
   const root = await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-launch-'));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
-  const source = path.join(root, 'sample.asm');
-  await fs.writeFile(source, 'asect 0\n    halt\nend\n');
+  await fs.mkdir(path.join(root, 'sorting'));
+  const source = path.join(root, 'sorting', 'sample.asm');
+  await fs.writeFile(source, 'run main\nmain:\n    ldi r0, 42\n    halt\nend\n');
 
   const uri = fsPath => ({fsPath, scheme: 'file', toString: () => fsPath});
   const folder = {uri: uri(root)};
@@ -41,7 +42,7 @@ test('the native VS Code launch provider builds an active CdM-8 file with no lau
       activeTextEditor: {document: {uri: uri(source), languageId: 'cocovs-assembly'}},
       createOutputChannel: () => ({show() {}, append: text => output.push(text), appendLine: text => output.push(text)}),
       showErrorMessage: message => errors.push(message),
-      showQuickPick: async () => 'cdm8',
+      showQuickPick: async items => typeof items[0] === 'string' ? 'cdm8' : items[0],
       showTextDocument: async () => {},
       withProgress: (_options, action) => action(undefined, token),
     },
@@ -91,7 +92,10 @@ test('the native VS Code launch provider builds an active CdM-8 file with no lau
   vm.runInThisContext('(function(require, module) {' + code + '\n})', {filename: file})(
     name => replacements[name] ?? requireModule(name), moduleForTest,
   );
-  moduleForTest.exports.activate({subscriptions: []});
+  const profiles = new Map();
+  moduleForTest.exports.activate({subscriptions: [], globalState: {
+    get: key => profiles.get(key), update: async (key, value) => profiles.set(key, value),
+  }});
   assert.ok(output.some(line => line.startsWith('Editor: Error: Simulated editor initialization failure')));
 
   const config = provider.resolveDebugConfiguration(folder, {});
@@ -101,6 +105,8 @@ test('the native VS Code launch provider builds an active CdM-8 file with no lau
   assert.equal(launch.architecture, 'harvard');
   assert.equal(launch.stopOnEntry, true);
   assert.equal(launch.maxSteps, 500);
+  assert.equal(launch.artifacts.image, path.join(root, 'sorting', 'build', 'sample.img'));
+  await assert.rejects(fs.access(path.join(root, 'build')), {code: 'ENOENT'});
   assert.match(await fs.readFile(launch.artifacts.image, 'utf8'), /v2\.0 raw/);
   assert.ok(JSON.parse(await fs.readFile(launch.artifacts.debug, 'utf8')).codeLocations);
   assert.equal(saves, 1);

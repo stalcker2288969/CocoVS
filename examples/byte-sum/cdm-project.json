@@ -1,0 +1,7 @@
+{
+  "entry": "src/main.asm",
+  "target": "cdm8",
+  "architecture": "vonNeumann",
+  "environment": "emulator",
+  "extraSources": []
+}

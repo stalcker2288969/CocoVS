@@ -54,6 +54,7 @@ test('editor completes includes and imported symbols, colors references and navi
     TextEdit: {insert: (position, newText) => ({position, newText})},
     WorkspaceEdit: class { entries = []; replace(uri, range, text) { this.entries.push({uri, range, text}); } },
     CompletionItem: class { constructor(label, kind) { this.label = label; this.kind = kind; } },
+    CodeLens: class { constructor(range, command) { this.range = range; this.command = command; } },
     CompletionItemKind: {Function: 1, Reference: 2, Keyword: 3, Folder: 4, File: 5},
     SemanticTokensLegend: class { constructor(tokens) { this.tokens = tokens; } },
     SemanticTokensBuilder: class {
@@ -80,9 +81,31 @@ test('editor completes includes and imported symbols, colors references and navi
   const execute = vm.runInThisContext('(function(require, module) {' + code + '\n})', {filename: file});
   execute(name => name === 'vscode' ? api : name === './format-editor' ? {registerFormatter() {}} : nodeRequire(name), moduleForTest);
   const context = {subscriptions: []};
+  const profiles = new Map();
+  context.globalState = {get: key => profiles.get(key), update: async (key, value) => profiles.set(key, value)};
   moduleForTest.exports.registerEditor(context);
   t.after(() => context.subscriptions.forEach(item => item.dispose()));
   const token = {isCancellationRequested: false};
+  const lenses = providers.registerCodeLensProvider.provideCodeLenses(
+    document(main, 'run boot\nmain:\nhalt\nboot:\nhalt\nend'));
+  assert.equal(lenses.length, 1);
+  assert.equal(lenses[0].range.start.line, 3);
+  assert.equal(lenses[0].command.command, 'cdmProject.debug');
+  assert.equal(lenses[0].command.arguments[0].fsPath, main);
+  assert.equal(lenses[0].command.title, '▶ Debug');
+  assert.equal(lenses[0].command.tooltip, 'Build and start debugging this file');
+  api.env = {language: 'ru'};
+  const russianLens = providers.registerCodeLensProvider.provideCodeLenses(document(main, 'main:\nhalt'))[0];
+  assert.equal(russianLens.command.title, '▶ Отладить');
+  assert.equal(russianLens.command.tooltip, 'Собрать и начать отладку этого файла');
+  api.env = {language: 'en'};
+  assert.deepEqual(providers.registerCodeLensProvider.provideCodeLenses(document(library.replace('.asm', '.mlb'), 'main:\nhalt')), []);
+  const {chooseLaunchProfile} = require('../src/launch-profile');
+  const profiled = path.join(root, 'profiled.asm');
+  await chooseLaunchProfile(context.globalState, profiled, {target: 'cdm16', architecture: 'harvard'}, async items => items[0]);
+  const profiledDoc = document(profiled, '    ldw r0, r');
+  const profiledItems = await providers.registerCompletionItemProvider.provideCompletionItems(profiledDoc, new Position(0, 13), token);
+  assert.ok(profiledItems.some(item => item.label === 'r7'));
 
   const definition = providers.registerDefinitionProvider;
   const locations = await definition.provideDefinition(mainDoc, new Position(3, 11), token);
@@ -187,6 +210,11 @@ test('editor completes includes and imported symbols, colors references and navi
   assert.match(details.contents[0].value, /Changed[\s\S]*PS Flags/);
 
   const semantic = providers.registerDocumentSemanticTokensProvider;
+  const startupTokens = await semantic.provideDocumentSemanticTokens(document(main, 'run start\nstart:\nhalt'), token);
+  assert.ok(startupTokens.some(([line, column, length, type]) => line === 0 && column === 0 && length === 3 && type === 4));
+  assert.ok(startupTokens.some(([line, column, length, type]) => line === 0 && column === 4 && length === 5 && type === 2));
+  assert.equal(manifest.contributes.semanticTokenTypes[4].id, 'cocovsDirective');
+  assert.deepEqual(manifest.contributes.semanticTokenScopes[0].scopes.cocovsDirective, ['keyword.control.cocovs']);
   const wide = document(path.join(root, 'sample.cdm16.asm'), '    ldw r0, r1, r2');
   const wideHover = await hover.provideHover(wide, new Position(0, 5), token);
   assert.match(wideHover.contents[0].value, /ldw\(addressRegister, destination\)\nldw\(baseRegister, indexRegister, destination\)/);

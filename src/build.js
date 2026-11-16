@@ -57,7 +57,12 @@ function assemblerProblems(text, sources) {
   return {problems, parserErrors};
 }
 
-function artifactPaths(job, directory = path.join(job.root, 'build')) {
+function buildDirectory(job) {
+  const directory = job.manifest ? job.root : path.dirname(path.resolve(job.root, job.config.entry));
+  return path.join(directory, 'build');
+}
+
+function artifactPaths(job, directory = buildDirectory(job)) {
   const basename = job.manifest ? 'out' : path.basename(job.config.entry, path.extname(job.config.entry));
   const suffix = job.config.target === 'custom' ? job.config.imageExtension ?? '.img' : '.img';
   return {
@@ -91,7 +96,7 @@ async function publishArtifacts(temporary, final, hasDebug) {
 async function build(job, cocas, options = {}, run = processResult) {
   options.signal?.throwIfAborted();
   const root = await fs.realpath(job.root);
-  const output = path.join(root, 'build');
+  const output = buildDirectory({...job, root});
   await fs.mkdir(output, {recursive: true});
   const outputReal = confined(root, await fs.realpath(output));
   const stage = await fs.mkdtemp(path.join(outputReal, '.cocovs-'));
@@ -159,4 +164,4 @@ async function build(job, cocas, options = {}, run = processResult) {
   }
 }
 
-module.exports = {artifactPaths, assemblerProblems, build, customInvocation, diagnostics, expandArgs};
+module.exports = {artifactPaths, assemblerProblems, build, buildDirectory, customInvocation, diagnostics, expandArgs};

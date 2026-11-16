@@ -1,0 +1,44 @@
+version: 1
+architecture: cdm8
+memory_model: unified  # CocoVS calls this vonNeumann.
+build:
+  # cdmbot does not process CocoVS # @include comments: list modules here.
+  sources: [../src/lib/sum.asm, ../src/data.asm]
+defaults:
+  setup:
+    registers: {sp: 0xF0}
+    input:
+      numbers: [3, 5, 8, 13, 21, 0, 0, 0]
+      count: 5
+  run: {until: halt, max_steps: 1000}
+  preserve_registers: [sp]
+  preserve_memory: [{address: 0xC0, length: 9}]
+cases:
+  normal:
+    expect:
+      registers: {r2: 50}
+      memory: {0xC9: 50}
+  empty:
+    setup:
+      input: {count: 0}
+    expect:
+      registers: {r2: 0}
+      memory: {0xC9: 0}
+  one_unsigned_byte:
+    setup:
+      input: {numbers: [200], count: 1}
+    expect:
+      registers: {r2: 200}
+      memory: {0xC9: 200}
+  wraparound:
+    setup:
+      input: {numbers: [250, 10], count: 2}
+    expect:
+      registers: {r2: 4}
+      memory: {0xC9: 4}
+  full_capacity:
+    setup:
+      input: {numbers: [1, 2, 3, 4, 5, 6, 7, 8], count: 8}
+    expect:
+      registers: {r2: 36}
+      memory: {0xC9: 36}

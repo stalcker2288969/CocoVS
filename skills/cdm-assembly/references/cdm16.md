@@ -17,13 +17,13 @@ Use byte stride 2 to iterate over an array of words. `stsp rN` sets SP. `push` m
 
 ## Startup and example
 
-Use the target system's reset template. The upstream CdM-16 starter declares a reset vector with `dc main, 0` at address 0. The following example uses the boot stub tested with Cocoemu via CocoVS. It is intended for that von Neumann configuration. Keep the startup template when modifying an existing board project.
+Use the target system's reset template. The CdM-16 examples tested with CocoVS and cdmbot use a reset vector (`dc main, 0`) at address 0. The example below uses the same vector layout with a label named `start`. It is intended for von Neumann execution with Cocoemu. Keep the appropriate startup template when modifying an existing board project.
 
 Save as `sum16.asm`. Expect r1 = 6, memory word `out = 6`, SP = `0x8000`, and stop reason `halt`.
 
 ```asm
 asect 0
-    br start
+    dc start, 0
 asect 0x0200
 start:
     ldi r7, 0x8000

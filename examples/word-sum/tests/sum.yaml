@@ -1,0 +1,44 @@
+version: 1
+architecture: cdm16
+memory_model: unified
+build:
+  sources: [../src/lib/sum.asm, ../src/data.asm]
+defaults:
+  setup:
+    registers: {sp: 0x8000, r4: 0x4444, r5: 0x5555, r6: 0x6666}
+    input:
+      # Lists are BYTES, even on CdM-16. Each word is low byte, high byte.
+      numbers: [0xE8, 3, 0xD0, 7, 0xB8, 11, 0xA0, 15, 0x88, 19, 0, 0, 0, 0, 0, 0]
+      count: 5  # A scalar is one native word (two bytes on CdM-16).
+  run: {until: halt, max_steps: 1000}
+  preserve_registers: [r4, r5, r6, sp]
+  preserve_memory: [{address: 0x0400, length: 18}]
+cases:
+  normal:
+    expect:
+      registers: {r2: 15000}
+      memory: {0x0412: [0x98, 0x3A]}
+  empty:
+    setup:
+      input: {count: 0}
+    expect:
+      registers: {r2: 0}
+      memory: {0x0412: [0, 0]}
+  one_word:
+    setup:
+      input: {numbers: [0xFF, 0xFF], count: 1}
+    expect:
+      registers: {r2: 65535}
+      memory: {0x0412: [0xFF, 0xFF]}
+  wraparound:
+    setup:
+      input: {numbers: [0xFF, 0xFF, 2, 0], count: 2}
+    expect:
+      registers: {r2: 1}
+      memory: {0x0412: [1, 0]}
+  carry_between_bytes:
+    setup:
+      input: {numbers: [0xFF, 0, 1, 0, 0, 1], count: 3}
+    expect:
+      registers: {r2: 512}
+      memory: {0x0412: [0, 2]}

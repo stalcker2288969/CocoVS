@@ -77,7 +77,7 @@
       ]
     },
     {
-      "begin": "^\\s*(?:([A-Za-z_.][A-Za-z0-9_.]*(?:\\s*,\\s*[A-Za-z_.][A-Za-z0-9_.]*)*)\\s*([:>])\\s*)?((?:asect|rsect|tplate|dc|db|dw|ds|align|ext|end|macro|mend|mpush|mpop|if|is|then|else|fi|while|stays|wend|do|until|break|continue))(?![A-Za-z0-9_.]|\\s*[:>])",
+      "begin": "^\\s*(?:([A-Za-z_.][A-Za-z0-9_.]*(?:\\s*,\\s*[A-Za-z_.][A-Za-z0-9_.]*)*)\\s*([:>])\\s*)?((?:asect|rsect|tplate|run|dc|db|dw|ds|align|ext|end|macro|mend|mpush|mpop|if|is|then|else|fi|while|stays|wend|do|until|break|continue))(?![A-Za-z0-9_.]|\\s*[:>])",
       "beginCaptures": {
         "1": {
           "name": "entity.name.type.label.cocovs"
@@ -97,7 +97,7 @@
       ]
     },
     {
-      "begin": "^\\s*(?:([A-Za-z_.][A-Za-z0-9_.]*(?:\\s*,\\s*[A-Za-z_.][A-Za-z0-9_.]*)*)\\s*([:>])\\s*)?((?:add|addc|addsp|and|bic|bis|bit|clr|cmp|dec|define|di|ei|halt|inc|int|ioi|lcb|lcsb|lcw|ld|ldb|ldc|ldi|ldpc|ldps|ldsa|ldsb|ldsp|ldssp|ldv|ldw|lsb|lssb|lsw|move|neg|nop|not|or|osix|pop|popall|pops|posp|pupc|pups|push|pushall|pusp|rannum|rcl|rcr|reset|restore|rol|ror|run|save|scl|setsp|shl|shla|shr|shra|ssb|ssw|st|stb|stps|stsp|stssp|stv|stw|sub|subc|swp|swpb|swpw|sxt|syscall|tst|wait|xor))(?![A-Za-z0-9_.]|\\s*[:>])",
+      "begin": "^\\s*(?:([A-Za-z_.][A-Za-z0-9_.]*(?:\\s*,\\s*[A-Za-z_.][A-Za-z0-9_.]*)*)\\s*([:>])\\s*)?((?:add|addc|addsp|and|bic|bis|bit|clr|cmp|dec|define|di|ei|halt|inc|int|ioi|lcb|lcsb|lcw|ld|ldb|ldc|ldi|ldpc|ldps|ldsa|ldsb|ldsp|ldssp|ldv|ldw|lsb|lssb|lsw|move|neg|nop|not|or|osix|pop|popall|pops|posp|pupc|pups|push|pushall|pusp|rannum|rcl|rcr|reset|restore|rol|ror|save|scl|setsp|shl|shla|shr|shra|ssb|ssw|st|stb|stps|stsp|stssp|stv|stw|sub|subc|swp|swpb|swpw|sxt|syscall|tst|wait|xor))(?![A-Za-z0-9_.]|\\s*[:>])",
       "beginCaptures": {
         "1": {
           "name": "entity.name.type.label.cocovs"
@@ -142,7 +142,7 @@
     },
     {
       "name": "keyword.control.cocovs",
-      "match": "\\b(?:asect|rsect|tplate|dc|db|dw|ds|align|ext|end|macro|mend|mpush|mpop|if|is|then|else|fi|while|stays|wend|do|until|break|continue)\\b"
+      "match": "\\b(?:asect|rsect|tplate|run|dc|db|dw|ds|align|ext|end|macro|mend|mpush|mpop|if|is|then|else|fi|while|stays|wend|do|until|break|continue)\\b"
     },
     {
       "name": "variable.parameter.cocovs",
@@ -208,7 +208,7 @@
         },
         {
           "name": "keyword.control.cocovs",
-          "match": "\\b(?:asect|rsect|tplate|dc|db|dw|ds|align|ext|end|macro|mend|mpush|mpop|if|is|then|else|fi|while|stays|wend|do|until|break|continue)\\b"
+          "match": "\\b(?:asect|rsect|tplate|run|dc|db|dw|ds|align|ext|end|macro|mend|mpush|mpop|if|is|then|else|fi|while|stays|wend|do|until|break|continue)\\b"
         },
         {
           "name": "entity.name.type.label.reference.cocovs",

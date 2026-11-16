@@ -232,104 +232,102 @@ run main
 # QuickSort(A, N), in-place unsigned byte sorting.
 # Clobbers r0-r3. The routine has no return-value slot.
 sort_v3:
-addsp -3
+    addsp -3
 
-getstack r1, 5  # N
-ldi r2, 1
-if
-    cmp r1, r2
-is hi  # Only partition if N > 1
-then
-    # pivot = mem[A + N - 1]
-    getstack r0, 4  # A
     getstack r1, 5  # N
-    dec r1
-    add r1, r0      # r0 = A + N - 1
-    ld r0, r1       # r1 = pivot value
-    ldsa r0, 2
-    st r0, r1       # local pivot = r1
-
-    setstacki 1, 0  # i = 0
-    setstacki 0, 0  # j = 0
-
-    while
-        getstack r0, 0  # j
-        getstack r1, 5  # N
-        dec r1          # last index = N - 1
-        cmp r0, r1
-    stays lo  # j < N - 1
+    ldi r2, 1
+    if
+        cmp r1, r2
+    is hi  # Only partition if N > 1
+    then
+        # pivot = mem[A + N - 1]
         getstack r0, 4  # A
-        getstack r1, 0  # j
-        add r1, r0      # r0 = A + j
-        ld r0, r2       # r2 = A[j]
-        getstack r1, 2  # pivot
-        if
-            cmp r2, r1
-        is lo  # A[j] < pivot
+        getstack r1, 5  # N
+        dec r1
+        add r1, r0      # r0 = A + N - 1
+        ld r0, r1       # r1 = pivot value
+        ldsa r0, 2
+        st r0, r1       # local pivot = r1
+
+        setstacki 1, 0  # i = 0
+        setstacki 0, 0  # j = 0
+
+        while
+            getstack r0, 0  # j
+            getstack r1, 5  # N
+            dec r1          # last index = N - 1
+            cmp r0, r1
+        stays  lo  # j < N - 1
             getstack r0, 4  # A
-            getstack r1, 1  # i
-            add r1, r0      # r0 = A + i
-
-            getstack r2, 4  # A
             getstack r1, 0  # j
-            add r1, r2      # r2 = A + j
-            swapptr         # swap mem[r0], mem[r2]
-            incstack 1      # i++
-        fi
-        incstack 0  # j++
-    wend
+            add r1, r0      # r0 = A + j
+            ld r0, r2       # r2 = A[j]
+            getstack r1, 2  # pivot
+            if
+                cmp r2, r1
+            is lo  # A[j] < pivot
+                getstack r0, 4  # A
+                getstack r1, 1  # i
+                add r1, r0      # r0 = A + i
 
-    # Final pivot placement: swap(A[i], A[N-1])
-    getstack r0, 4  # A
-    getstack r1, 1  # i
-    add r1, r0      # r0 = A + i
-    getstack r2, 4  # A
-    getstack r1, 5  # N
-    dec r1
-    add r1, r2      # r2 = A + N - 1
-    swapptr
+                getstack r2, 4  # A
+                getstack r1, 0  # j
+                add r1, r2      # r2 = A + j
+                swapptr         # swap mem[r0], mem[r2]
+                incstack 1      # i++
+            fi
+            incstack 0  # j++
+        wend
 
-    # QuickSort(A, i)
-    getstack r1, 1  # left length = i
-    getstack r0, 4  # left address = A
-    push r1         # length, pushed first
-    push r0         # address, pushed second
-    jsr sort_v3
-    addsp 2         # discard exactly two arguments
+        # Final pivot placement: swap(A[i], A[N-1])
+        getstack r0, 4  # A
+        getstack r1, 1  # i
+        add r1, r0      # r0 = A + i
+        getstack r2, 4  # A
+        getstack r1, 5  # N
+        dec r1
+        add r1, r2      # r2 = A + N - 1
+        swapptr
 
-    # QuickSort(A + i + 1, N - i - 1)
-    getstack r0, 4  # A
-    getstack r1, 1  # i
-    add r1, r0
-    inc r0          # right address
+        # QuickSort(A, i)
+        getstack r1, 1  # left length = i
+        getstack r0, 4  # left address = A
+        push r1         # length, pushed first
+        push r0         # address, pushed second
+        jsr sort_v3
+        addsp 2         # discard exactly two arguments
 
-    # Правая часть: N - i - 1
+        # QuickSort(A + i + 1, N - i - 1)
+        getstack r0, 4  # A
+        getstack r1, 1  # i
+        add r1, r0
+        inc r0          # right address
 
-    getstack r2, 1  # r2 = i
-    getstack r1, 5  # r1 = N
-    sub r1, r2      # r2 = N - i
-    dec r2          # r2 = N - i - 1
+        # Правая часть: N - i - 1
 
-    push r2
-    push r0
-    jsr sort_v3
-    addsp 2
-fi
+        getstack r2, 1  # r2 = i
+        getstack r1, 5  # r1 = N
+        sub r1, r2      # r2 = N - i
+        dec r2          # r2 = N - i - 1
 
-addsp 3  # discard j, i, pivot before rts
-rts
-ldi r0, 10
+        push r2
+        push r0
+        jsr sort_v3
+        addsp 2
+    fi
+
+    addsp 3  # discard j, i, pivot before rts
+    rts
+    ldi r0, 10
 main:
-ldi r0, arr
-ldi r1, 6
-push r1      # length
-push r0      # array address
-jsr sort_v3  # hello
-addsp 2      # no return slot: remove 2 args
-halt
+    ldi r0, arr
+    ldi r1, 6
+    push r1      # length
+    push r0      # array address
+    jsr sort_v3  # hello
+    addsp 2      # no return slot: remove 2 args
+    halt
 
 arr:
-dc 9, 2, 0, 1, 4, 10
-res:
-ds 5
+    dc 9, 2, 0, 1, 4, 10
 end

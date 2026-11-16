@@ -5,7 +5,7 @@ const path = require('node:path');
 const {checkSyntax, fileKey} = require('./live-check');
 const {ASSEMBLY, MANIFEST, resolveSources} = require('./project');
 
-function registerLiveDiagnostics(context, vscode, {selector, projectInfo, toolchain, publishLive, invalidateBuild}) {
+function registerLiveDiagnostics(context, vscode, {selector, projectInfo, toolchain, publishLive, invalidateBuild, onDidChangeLaunchProfile}) {
   const {workspace, window} = vscode;
   let timer;
   let current;
@@ -93,6 +93,7 @@ function registerLiveDiagnostics(context, vscode, {selector, projectInfo, toolch
       schedule();
     }),
   );
+  if (onDidChangeLaunchProfile) context.subscriptions.push(onDidChangeLaunchProfile(schedule));
   schedule();
 }
 

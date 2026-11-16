@@ -14,10 +14,12 @@ const {planRename} = require('./rename');
 const {lintRoutines} = require('./routine-lint');
 const {findCdmbot, editCdmbot} = require('./cdmbot');
 const {operandKinds, conditionNames, comparisonConditions} = require('./operands');
+const {getLaunchProfile} = require('./launch-profile');
+const {entryPoints} = require('./entry-points');
 
 const SELECTOR = ['cocovs-assembly', 'cdm8-assembly', 'cdm8e-assembly', 'cdm16-assembly', 'cdm16e-assembly'];
 const DIRECTIVES = 'asect rsect tplate dc db dw ds align ext end macro mend mpush mpop if is then else fi while stays wend do until break continue'.split(' ');
-const TOKEN_TYPES = {instruction: 0, macro: 1, label: 2, control: 3};
+const TOKEN_TYPES = {instruction: 0, macro: 1, label: 2, control: 3, directive: 4};
 
 function fileKey(file) {
   const resolved = path.resolve(file);
@@ -27,7 +29,7 @@ function fileKey(file) {
 function registerEditor(context, liveDiagnostics) {
   registerFormatter(context, SELECTOR);
   const indexes = new WeakMap();
-  const semanticTypes = new vscode.SemanticTokensLegend(['cocovsMnemonic', 'cocovsUserMacro', 'cocovsLabel', 'cocovsControlFlow']);
+  const semanticTypes = new vscode.SemanticTokensLegend(['cocovsMnemonic', 'cocovsUserMacro', 'cocovsLabel', 'cocovsControlFlow', 'cocovsDirective']);
   const refreshColors = new vscode.EventEmitter();
   const diagnostics = vscode.languages.createDiagnosticCollection('cocovs-symbols');
 
@@ -51,7 +53,8 @@ function registerEditor(context, liveDiagnostics) {
       }
     }
     const setting = vscode.workspace.getConfiguration('cocovs', document.uri).get('target');
-    const target = config?.target ?? inferTarget(document.fileName, document.languageId, setting);
+    const target = config?.target ?? getLaunchProfile(context.globalState, document.fileName)?.target ??
+      inferTarget(document.fileName, document.languageId, setting);
     const instructions = target === 'custom' ? config?.instructions ?? [] : instructionSets[target] ?? [];
     return {root, config, target, instructions};
   }
@@ -344,7 +347,22 @@ function registerEditor(context, liveDiagnostics) {
     scheduleHints();
   }
 
+  if (liveDiagnostics?.onDidChangeLaunchProfile) {
+    context.subscriptions.push(liveDiagnostics.onDidChangeLaunchProfile(() => { refreshColors.fire(); scheduleHints(); }));
+  }
   context.subscriptions.push(refreshColors, diagnostics, {dispose() { clearTimeout(timer); revision++; }},
+    vscode.languages.registerCodeLensProvider(SELECTOR, {
+      onDidChangeCodeLenses: refreshColors.event,
+      provideCodeLenses(document) {
+        if (document.uri.scheme !== 'file' || /\.mlb$/i.test(document.fileName) ||
+            !['cdm8', 'cdm8e', 'cdm16'].includes(projectInfo(document).target)) return [];
+        const ru = /^ru(?:-|$)/i.test(vscode.env?.language ?? 'en');
+        return entryPoints(document.getText()).map(symbol => new vscode.CodeLens(range(symbol), {
+          title: ru ? '▶ Отладить' : '▶ Debug', command: 'cdmProject.debug', arguments: [document.uri],
+          tooltip: ru ? 'Собрать и начать отладку этого файла' : 'Build and start debugging this file',
+        }));
+      },
+    }),
     vscode.commands.registerCommand('cocovs.showSuggestions', () => vscode.commands.executeCommand('editor.action.triggerSuggest')),
     vscode.workspace.onDidSaveTextDocument(refresh),
     vscode.workspace.onDidChangeTextDocument(event => {

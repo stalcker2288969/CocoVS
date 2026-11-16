@@ -1,68 +1,127 @@
-# Руководство CocoVS
+# CocoVS user guide
 
-## Установка и первый запуск
+CocoVS provides CdM-8/CdM-16 assembly editing, CoCAS builds, local execution, source debugging, and RAM inspection in desktop Visual Studio Code.
 
-1. Установи `.vsix` через **Extensions → … → Install from VSIX…** или командой `code --install-extension cdm-project-tools-0.8.13.vsix`.
-2. При первом запуске в доверенной папке выбери **Install required tools** или запусти сборку. CocoVS использует совместимые Python и CoCAS, если они найдены. В остальных случаях оно скачивает переносимый Python и устанавливает `cdm-devkit` в своё окружение.
-3. Чтобы повторить проверку или указать путь к уже установленному инструменту, вызови **CocoVS: Set Up Toolchain**. Настройки `cocovs.pythonPath`, `cocovs.cocasPath`, `cocovs.javaPath` и `cocovs.cocoemuJar` принимают абсолютные пути.
+Start with the [example catalog](../examples/README.md). See [automated testing](testing.md) for cdmbot and [development and publishing](development.md) for building the extension itself.
 
-Ход установки отображается в **Output → CocoVS**. Для CdM-16 там видны проверка Python для отладки, путь к Cocoemu JAR и установка JDK, если он нужен.
+## Installation and toolchain setup
 
-Один VSIX используется на Windows, macOS и Linux (x64 и ARM64). Для локального запуска CdM-16 и CdM-16e CocoVS использует доступный JDK 17+ или скачивает Eclipse Temurin 21 при первом запуске. Ручная установка Python и JDK не нужна. Для автоматической настройки нужны доступ к GitHub, PyPI и, при загрузке JDK, Adoptium API, а также системная команда `tar`.
+1. Install **CocoVS — CdM Assembly** from Extensions, or use **Extensions: Install from VSIX...** with a downloaded package.
+2. Open a trusted local folder or a saved assembly file. Building, running, and debugging require workspace trust.
+3. Run **CocoVS: Set Up Toolchain**, or start a build. CocoVS reuses compatible tools and can prepare its own Python environment with `cdm-devkit`.
 
-## Один файл
+Watch **Output → CocoVS** for detection, installation, assembler output, and execution results. CdM-16 setup also reports its debug Python, Cocoemu JAR, and JDK preparation.
 
-Открой сохранённый `.asm` и вызови **CocoVS: Run** через палитру команд или кнопкой ▶ в редакторе. Для обычного `.asm` цель по умолчанию задаёт `cocovs.target`. Имя `demo.cdm16.asm` выбирает CdM-16. Команда **CocoVS: Build** сохраняет образ в `build/`.
+One VSIX supports Windows, macOS, and Linux on x64 and ARM64. CdM-16/CdM-16e execution requires JDK 17+; CocoVS can download Temurin 21 if needed. Automatic setup requires access to the download services and a system `tar` command. Supply absolute paths through `cocovs.pythonPath`, `cocovs.cocasPath`, `cocovs.javaPath`, and `cocovs.cocoemuJar` when using your own tools.
+
+Completion, hover documentation, and signature help work without a toolchain. CoCAS is needed for assembler diagnostics and builds.
+
+## Run a standalone file
+
+Open a saved `.asm` file and run **CocoVS: Run**, or use the editor's play button. A project manifest and `launch.json` are not required. You can open one file or a folder containing independent programs.
 
 ```asm
 asect 0
-start:
+main:
     ldi r0, 42
     halt
 end
 ```
 
-Локальный запуск работает с `vonNeumann` и `harvard`. Настройка `cocovs.maxSteps` ограничивает число инструкций. Python-ядро CdM-8 покрывает вычисления, память, стек и переходы. Для периферии, внешних прерываний и аппаратных схем используй Logisim или свой `runner`.
+On the first build, run, or debug launch, choose the processor and memory architecture:
 
-## Несколько файлов
+- **von Neumann** (`vonNeumann`): shared instruction and data memory.
+- **Harvard** (`harvard`): separate instruction and data memory.
 
-Открой папку и вызови **CocoVS: Initialize Project**. Команда создаёт `main.asm`, `cdm-project.json`, задачу сборки и конфигурацию F5 для поддерживаемых отладчиков.
+CocoVS remembers the selection by the file's full path in local extension storage, including across VS Code restarts. Other files can have different settings. **CocoVS: Configure File Execution** changes the active file's selection. Cancelling either picker cancels the launch.
+
+The initial processor suggestion comes from a suffix such as `demo.cdm16.asm`, the language mode, or `cocovs.target`. The initial memory architecture comes from `cocovs.architecture`. A saved file profile takes precedence; a containing project's manifest takes precedence over file profiles.
+
+### Local build output
+
+Standalone output is placed in `build/` beside the source, regardless of the open workspace folder:
+
+```text
+sorting/
+  sort.asm
+  build/
+    sort.img
+    sort.dbg.json
+    sort.combined.asm
+    sort.ram.bin
+```
+
+The RAM dump is produced by a local **Run**. The workspace boundary still controls dependency resolution. A project with `cdm-project.json` writes `build/out.*` in that project's root instead.
+
+### Entry-point debug links
+
+The **▶ Debug** CodeLens appears above a label named by `run label`. Without `run`, CocoVS recognizes `main`, `_main`, `start`, `_start`, `program`, `init`, `entry`, `_entry`, and `reset`. Macro-local labels, external declarations, and data declarations are excluded from these suggestions.
+
+The link builds and debugs its file even if another editor is active. The processor starts normally; the link does not assign an arbitrary PC to the label. For a file in a project, the configured project entry program is launched. The label and tooltip use Russian when the VS Code display language is Russian, and English otherwise.
+
+## Processor support
+
+| Target | Local execution | Debugging |
+| --- | --- | --- |
+| CdM-8 | Built-in Python emulator | Built-in debugger |
+| CdM-8e | Configure a project runner | External CdM Processors / Logisim |
+| CdM-16 | Cocoemu and JDK 17+ | Built-in debugger |
+| CdM-16e | Cocoemu and JDK 17+ | No built-in debugger |
+| Custom processor | Configure your assembler and runner | Use your processor's tools |
+
+Debug links are hidden for CdM-16e and custom processors. `cocovs.maxSteps` limits local execution. Use Logisim or a custom runner for hardware peripherals, external interrupts, or a specific circuit.
+
+The [tested CdM-16 examples](../examples/word-sum/README.md) use a reset vector (`dc main, 0`) at address 0, aligned words, and an initialized stack. Select the processor and memory model matching your source.
+
+## Multi-file projects
+
+Open a folder and run **CocoVS: Initialize Project**. It creates `main.asm` if absent, `cdm-project.json`, a build task, and an F5 profile for supported debuggers.
 
 ```json
 {
-  "entry": "main.asm",
+  "entry": "src/main.asm",
   "target": "cdm8",
   "architecture": "vonNeumann",
-  "environment": "external",
-  "address": "ws://localhost:7001",
+  "environment": "emulator",
   "extraSources": []
 }
 ```
 
-Строка `# @include "lib/routines.asm"` добавляет отдельный исходник к вызову CoCAS. Путь считается относительно файла с директивой. `extraSources` отсчитываются от манифеста. CoCAS собирает `.asm` как отдельные модули, принимает `.mlb` как библиотеки макросов и линкует `.obj`, `.o` и `.lib`. Для символа из другого модуля используй объявление `name: ext` и экспорт `name>` в определяющем модуле. Рабочий пример есть в `examples/multi-file`.
+An include comment adds a separate source module to the CoCAS invocation:
 
-Чтобы подключить все исходники из папки, используй `# @include "lib/*"`. CocoVS берёт `.asm` и `.mlb` непосредственно из указанной папки в порядке имён. Вложенные папки подключаются отдельными директивами.
+```asm
+# @include "lib/routines.asm"
+sum_bytes: ext
+```
 
-При успешной сборке в `build/out.combined.asm` (или `build/<имя>.combined.asm` для одиночного файла) сохраняется текст всех подключённых исходников. Бинарные зависимости указаны комментариями. CoCAS по-прежнему собирает исходные модули, поэтому переходы к файлам и адреса при отладке соответствуют оригиналу. Пользовательский ассемблер может получить объединённый текст через `${combined}`.
+Include paths are relative to the file containing the directive. `extraSources` paths are relative to the manifest. CoCAS assembles `.asm` files as separate modules, accepts `.mlb` macro libraries, and links `.obj`, `.o`, and `.lib` inputs. Import a symbol with `name: ext`; export it with `name>` in its defining module. Each source module retains its own `end` directive.
 
-В стандартной тёмной теме VS Code метки и их операнды бирюзовые, переходы и вызовы оранжевые, пользовательские макросы фиолетовые, а остальные штатные инструкции жёлтые. Оттенки определяет выбранная тема.
+`# @include "lib/*"` includes assembly and macro-library sources directly inside a folder in filename order. Nested folders need their own directives. See [byte-sum](../examples/byte-sum/README.md) and [word-sum](../examples/word-sum/README.md) for complete projects.
 
-По `Ctrl+Click` или `F12` на имени метки открывается её объявление, включая экспорт в подключённом файле. После `# @include "` редактор предлагает файлы и папки. Подсказки операндов зависят от мнемоники и позиции после запятой. Например, `ldi` предлагает регистр в первом аргументе и метку во втором. При выборе экспорта CoCAS CocoVS добавляет `name: ext`, если объявления ещё нет. Подсказки можно вызвать через `Ctrl+Space` или `Cmd+Shift+.` на macOS.
+A successful build also writes `out.combined.asm` to the project's `build/` directory. Standalone builds use `<source-name>.combined.asm` in the local `build/`. This listing shows module boundaries and binary inputs. CoCAS still builds the original modules, preserving source locations. A custom assembler can access the listing through `${combined}`.
 
-Комментарии `#` непосредственно над меткой или макросом видны при наведении. Редактор поддерживает переход к объявлению, оглавление файла, ссылки на `@include`, автодополнение команд и ошибки CoCAS в **Problems**. Если установлены оба расширения, выбери **CocoVS Assembly** через переключатель языка VS Code, чтобы использовать подсветку CocoVS.
+## Editing and navigation
 
-Описание над меткой или макросом можно оформить тегами `# @param имя описание` и `# @returns результат`. При наведении видно описание и сигнатуру, а `Ctrl+Shift+Space` показывает подсказку при вводе вызова.
+Choose **CocoVS Assembly** in **Change Language Mode** if another extension claims `.asm` files. Completion depends on processor, instruction, operand position, and comma-separated arguments. For example, `ldi` suggests a register first and a label second. Selecting an exported CoCAS label can add a missing `name: ext` declaration automatically.
 
-| Сочетание | Сниппет |
+Use **CocoVS: Show Assembly Suggestions**, `Ctrl+Space`, or `Cmd+Shift+.` on macOS. Include completion suggests files and folders after `# @include "`. Hover and signature help work independently of live diagnostics.
+
+`Ctrl+Click` or F12 opens definitions, including imported ones. The editor provides an outline, include links, and semantic highlighting. In the default dark theme, labels are typically teal, control flow orange, macros and directives such as `run` purple, and other instructions yellow. Exact colors depend on the theme.
+
+Comments directly above a label or macro appear in hover documentation. Use `@param`, `@return` (or `@returns`), and `@changed` to describe arguments, results, and modified registers, flags, or memory. `Ctrl+Shift+Space` opens signature help.
+
+### Snippets and comparisons
+
+| Shortcut | Snippet |
 | --- | --- |
-| `Ctrl+Alt+W` | `while` |
-| `Ctrl+Alt+F` | `for` со счётчиком на основе `while` |
-| `Ctrl+Alt+I` | `if/else` |
-| `Ctrl+Alt+D` | `discript` |
+| `Ctrl+Alt+W` | `while` loop |
+| `Ctrl+Alt+F` | Register-based counted loop |
+| `Ctrl+Alt+I` | `if/else` block |
+| `Ctrl+Alt+D` | Documentation block (`discript` / `describe`) |
 
-После `is`, `stays` и `until` доступны сравнения: набери оператор и выбери подсказку через `Enter` или `Tab`. Редактор заменит его кодом условия CoCAS. Суффикс `s` означает знаковое сравнение (signed), `u` — беззнаковое (unsigned); подсказки также показывают тип сравнения и итоговый код. Если набрать только `>=`, `<=`, `>` или `<`, можно выбрать любой из двух вариантов. В поле условия внутри сниппета список можно вызвать через `Ctrl+Space`.
+After `is`, `stays`, or `until`, type a comparison and accept completion with Enter or Tab. The editor inserts a CoCAS condition code. Suffix `s` means signed; `u` means unsigned. Typing only `>`, `>=`, `<`, or `<=` offers both variants. Inside a snippet placeholder, invoke completion with `Ctrl+Space` if needed.
 
-| Сравнение | Знаковое (`s`) | Беззнаковое (`u`) |
+| Relation | Signed | Unsigned |
 | --- | --- | --- |
 | `>` | `>s` → `gt` | `>u` → `hi` |
 | `>=` | `>=s` → `ge` | `>=u` → `hs` |
@@ -71,25 +130,21 @@ end
 | `==` | `eq` | `eq` |
 | `!=` | `ne` | `ne` |
 
-Сравнение относится к операндам `cmp left, right` в порядке `left оператор right`. Например, после `cmp r0, r1` выбор `>=u` в строке `stays >=u` вставит `stays hs`: цикл продолжается, пока беззнаковое значение `r0 >= r1`. Аналогично `is <s` превращается в `is lt`. Между `cmp` и условием не должно быть инструкций, меняющих флаги. Обычные коды (`nz`, `z`, `hi`, `lo` и другие) по-прежнему доступны. Операторы — сокращения редактора: перед сборкой прими подсказку, чтобы в исходнике остался код CoCAS.
+These relations describe `cmp left, right` as `left relation right`. After `cmp r0, r1`, accepting `>=u` in `stays >=u` inserts `stays hs`, continuing while unsigned `r0 >= r1`. Do not change comparison flags before testing them. Ordinary codes such as `z`, `nz`, `hi`, and `lo` remain available. These operators are editor abbreviations: accept completion before assembling so the source contains a valid CoCAS condition.
 
-CoCAS проверяет синтаксис после короткой паузы в наборе. Проверка учитывает несохранённые изменения в открытом файле и подключённых модулях. Ошибки видны в коде и в **Problems**. Чтобы отключить проверку при редактировании, установи `cocovs.liveDiagnostics` в `false`. Ошибки компоновки появляются при сборке.
+### Diagnostics and refactoring
 
-## Тестирование и рефакторинг
+CoCAS checks syntax after a short typing delay, including unsaved buffers and included modules. Errors appear in the editor and **Problems**. Set `cocovs.liveDiagnostics` to `false` to disable live assembler checks. Link errors are reported during a build.
 
-В панели **Testing** CocoVS открывает `project.yaml` и `project.yml` с секцией `suites`. Можно запустить проект, набор или отдельный тест. Тест открывается на своей строке в YAML. **Project checks** запускает проверку структуры, синтаксиса и порогов покрытия, настроенных в манифесте. Сводка покрытия появляется в выводе тестов. Для покрытия нужен полный запуск проекта.
+F2 renames simple labels, `ext` declarations, exports, and source references across linked modules. CocoVS also checks sources referenced by cdmbot suites. Renaming stops for ambiguous references, conflicts, macro use that prevents safe analysis, or labels referenced in `setup.input`. Open a CocoVS or cdmbot project to rename exports across modules.
 
-Команда **CocoVS: Create cdmbot Test Suite** добавляет набор с тестом `smoke` и подключает исходники из конфигурации CocoVS. **CocoVS: Add cdmbot Test Case** добавляет тест в выбранный набор. Ожидания, данные и удаление кейсов редактируются в YAML. Если cdmbot не найден автоматически, укажи Python из его окружения в `cocovs.cdmbotPythonPath`. Число параллельных кейсов задаёт `cocovs.cdmbotJobs`.
+**Problems** can warn about stack imbalance on return paths and undocumented side effects in routines/macros. A result register declared with `@return` is considered documented. Analysis covers recognized instructions and static control flow for CdM-8 and CdM-16.
 
-**F2** переименовывает простую метку, связанные объявления `ext`, экспорт и ссылки в исходниках проекта. Также проверяются исходники тестовых наборов cdmbot. При неоднозначном разрешении, возможном конфликте, использовании из макроса или через `setup.input` переименование останавливается. Для переименования экспортов открой проект с `cdm-project.json` или манифестом cdmbot.
+## Formatting
 
-В **Problems** появляются предупреждения о возможном дисбалансе стека на пути до возврата и о побочных эффектах документированных подпрограмм и макросов, пропущенных в `@changed`. Указанный в `@return` регистр результата считается объявленным. Анализ проверяет распознанные инструкции и статические переходы для CdM-8 и CdM-16.
+CoCAS sources are formatted on save by default with four spaces per indent level. Section headers such as `asect` and startup declarations such as `run main` remain at the outer level; routine bodies and structured blocks are indented. Inline comments align within adjacent groups. Blank lines, labels, and block boundaries separate groups. **Format Document** applies the same style manually.
 
-## Форматирование
-
-CocoVS автоматически форматирует исходники CoCAS при сохранении. По умолчанию уровень отступа равен четырём пробелам. Комментарии после инструкций выравниваются в пределах соседних строк с одинаковым отступом. Пустые строки, метки и границы блоков разделяют группы. Команда VS Code **Format Document** применяет тот же стиль вручную.
-
-Вызови **CocoVS: Create Formatter Configuration**, чтобы создать или открыть `cocovs-format.json` в корне проекта. Если манифеста нет, команда использует папку рабочего пространства или папку открытого файла. Пропущенные параметры берутся из настроек по умолчанию.
+**CocoVS: Create Formatter Configuration** creates or opens `cocovs-format.json` in the project root, or in the workspace/file folder without a project. Settings are read from the project or a containing formatter configuration within the workspace boundary. Missing options use defaults.
 
 ```json
 {
@@ -101,17 +156,17 @@ CocoVS автоматически форматирует исходники CoCA
 }
 ```
 
-Для `indentStyle` доступны `spaces` и `tabs`. Ноль в `commentColumn` подбирает колонку автоматически. Положительное число задаёт минимальную колонку, считая от единицы. Если инструкция длиннее, комментарии группы сдвигаются вправо. `formatOnSave: false` отключает форматирование при сохранении. Форматирование доступно для целей CoCAS.
+`indentStyle` accepts `spaces` or `tabs`. `commentColumn: 0` selects alignment automatically; a positive value specifies a minimum one-based column. Longer code moves comments farther right. `formatOnSave: false` disables save formatting while keeping manual formatting available. Formatting applies to CoCAS targets.
 
-## Отладка и панель памяти
+## Debugging and RAM
 
-Для CdM-8 и CdM-16 запусти **Run and Debug**, нажми F5 или вызови **CocoVS: Debug**. В списке выбери **CocoVS CdM-8 / CdM-16**. Встроенный отладчик поддерживает точки останова, пошаговое выполнение, вход в подпрограмму и выход из неё. CdM-16 использует Cocoemu из dev-kit и JDK 17+.
+For CdM-8/CdM-16, use F5, **CocoVS: Debug**, or the entry-point CodeLens. Select **CocoVS CdM-8 / CdM-16** if asked for a debugger. The debugger supports breakpoints, source/instruction stepping, step into, and step out.
 
-На первой остановке открывается **CocoVS RAM** с регистрами, флагами и таблицей памяти. Изменения подсвечиваются. Нажми на заголовок **RAM**, чтобы свернуть или развернуть таблицу. В CdM-16 поле **Address** выбирает страницу из 256 байтов. Панель также доступна через **CocoVS: Open RAM View**. Автооткрытие настраивается через `cocovs.openMemoryOnDebug`.
+**CocoVS RAM** opens at the first stop with registers, flags, and memory. Changed bytes are highlighted. Click the **RAM** heading to collapse the table. On CdM-16, **Address** selects a 256-byte page. Open it manually with **CocoVS: Open RAM View**; `cocovs.openMemoryOnDebug` controls automatic opening.
 
-В **Data labels** можно искать по имени, директиве (`dc`, `ds`, `db`, `dw`) или типу. Нажми на заголовок **Data labels**, чтобы свернуть список. Метки с **Pin** остаются видимыми. Треугольник рядом со значением сворачивает отдельную незакреплённую метку. Колонка **Type** показывает тип, а при наведении — также директиву и размер в байтах. Кнопка перехода открывает объявление в исходнике. Палитра рядом с меткой окрашивает её байты в RAM. **Stack color** задаёт цвет указателя SP и активного диапазона стека. Цвета сохраняются для проекта. В Harvard метки из ROM не окрашивают RAM.
+In **Data labels**, search by name, directive (`dc`, `ds`, `db`, `dw`), or type. Pin labels to keep them visible; the triangle beside a value collapses an unpinned label. The **Type** column and tooltip show type, directive, and byte length. Each label has an action to open its declaration and a palette to color its memory. **Stack color** controls the stack pointer and active stack region. Colors are remembered for the project. In Harvard mode, ROM labels do not color RAM bytes.
 
-Комментарий `# @type: …` над объявлением задаёт отображение метки в режиме **Auto**.
+A comment above a declaration selects its **Auto** display type:
 
 ```asm
 # @type: str
@@ -119,24 +174,26 @@ text:
     dc "Hello World"
 ```
 
-| Тип | Представление |
+| Type | Display |
 | --- | --- |
-| `str` | Строка UTF-8 с экранированием управляющих символов |
-| `u8`, `i8` | Беззнаковые и знаковые байты |
-| `u16`, `i16` | Беззнаковые и знаковые 16-битные слова, младший байт первым |
-| `hex`, `bytes` | Байты в шестнадцатеричном виде |
+| `str` | UTF-8 text with escaped control characters |
+| `u8`, `i8` | Unsigned and signed bytes |
+| `u16`, `i16` | Unsigned and signed little-endian 16-bit words |
+| `hex`, `bytes` | Hexadecimal bytes |
 
-В комментарии после `# @` редактор предлагает теги. После `@type:` он подсказывает типы, а после `@param`, `@return`, `@returns` и `@changed` — регистры целевого процессора. В `@changed` можно перечислить изменяемые регистры, флаги и память. Этот блок виден при наведении и в подсказке вызова.
+After `# @`, completion offers documentation tags; after `@type:`, display types. After `@param`, `@return`, `@returns`, or `@changed`, it suggests processor registers. **Format** changes the display for all labels. In Harvard mode, initialized constants are read from ROM and `ds` storage from RAM.
 
-Селектор **Format** меняет представление сразу для всех меток. В режиме Harvard константы читаются из ROM, а значения `ds` из RAM.
+Use **CocoVS: Debug via CdM Processors** for an external Logisim debugger; its launch configuration supplies the circuit and server address. CdM-8e uses this external workflow. Refresh older generated CdM-16 profiles with **CocoVS: Generate Build and Debug Configuration**.
 
-Для отладки схемы Logisim вызови **CocoVS: Debug via CdM Processors**. Путь к схеме и адрес указываются в конфигурации внешнего отладчика. Для CdM-8e используется CdM Processors.
+## Automated tests
 
-**CocoVS: Initialize Project** сразу создаёт конфигурацию F5. Чтобы перевести старую конфигурацию проекта CdM-16 на встроенный отладчик, запусти **CocoVS: Generate Build and Debug Configuration**.
+CocoVS discovers cdmbot `project.yaml` / `project.yml` manifests with a `suites` section in **Testing**. Run a project, suite, or case, with links to YAML locations. **Project checks** reports structure, syntax, and coverage thresholds; coverage needs a full project run.
 
-## Свой процессор и схема игры
+**CocoVS: Create cdmbot Test Suite** generates a suite and smoke case. **CocoVS: Add cdmbot Test Case** adds a case. Edit inputs and assertions in YAML. `cocovs.cdmbotPythonPath` selects an environment with cdmbot; `cocovs.cdmbotJobs` controls concurrency. Follow the [testing guide](testing.md) for setup and complete examples.
 
-Профиль `custom` передаёт исходники твоему ассемблеру. Он должен записать образ по пути `${image}`. CocoVS передаст этот файл дальше в `runner`. Формат ROM и загрузку образа в конкретную схему определяют твои инструменты.
+## Custom processors and runners
+
+The `custom` target delegates assembly and execution to your tools. The assembler must write output to `${image}`; the runner receives that file. Your tools define the format and circuit loading process.
 
 ```json
 {
@@ -155,30 +212,8 @@ text:
 }
 ```
 
-В примере `assemble.py` и `run_circuit.py` представляют твои инструменты. В `runner` можно указать собственный эмулятор или скрипт, который запускает Logisim и загружает образ в нужное устройство. Для ручной загрузки достаточно **Build** и образа в `build/out.bin`. Если у тебя несколько исходников, `${sources}` указывается отдельным элементом и разворачивается в несколько аргументов. Доступны также `${project}`, `${entry}`, `${image}` и `${debug}`. Пути с пробелами передаются отдельными аргументами.
+These scripts are placeholders for your assembler and circuit launcher. `${sources}` must be a separate argument; it expands to multiple input paths. Other placeholders include `${project}`, `${entry}`, `${image}`, `${debug}`, and `${combined}`. Paths with spaces are passed as individual arguments. For manual loading, run **CocoVS: Build** and load `build/out.bin` yourself.
 
-## Разработка расширения
+## Development and publishing
 
-Для сборки расширения нужны Node.js 22 или новее и npm. Открой терминал в корне репозитория. При первой сборке или после изменения зависимостей выполни `npm ci`, затем проверь тесты и собери установочный пакет:
-
-```powershell
-npm ci
-npm test
-npm run package
-```
-
-Исходники расширения написаны на JavaScript, поэтому отдельная компиляция не требуется. Команда `npm run package` создаёт `cdm-project-tools-<version>.vsix` в корне проекта. Для повторной сборки после изменения кода достаточно `npm test` и `npm run package`.
-
-Перед следующим выпуском обнови версию сразу в `package.json` и `package-lock.json` командой `npm version patch --no-git-tag-version` (например, с 0.8.13 до 0.8.14), добавь изменения в `CHANGELOG.md` и снова собери пакет. Для конкретного номера можно использовать `npm version 0.8.14 --no-git-tag-version`.
-
-Установи пакет через **Extensions: Install from VSIX...** или командой `code --install-extension ./cdm-project-tools-0.8.13.vsix --force`. Если VS Code предложит перезагрузку окна, выполни **Developer: Reload Window**.
-
-Для интеграционных тестов включи `COCOVS_INTEGRATION=1`. При необходимости задай `COCOVS_PYTHON`, `COCOVS_COCAS`, `COCOVS_JAVA` и `COCOVS_JAR`. Если cdmbot недоступен, `COCOVS_SKIP_CDMBOT=1` отключает только его интеграционный тест.
-
-Чтобы проверить подсказки в настоящем VS Code, запусти `npm install --no-save --package-lock=false @vscode/test-electron@2.5.2`, затем `npm run test:host`. Можно задать `COCOVS_VSCODE` с путём к установленному исполняемому файлу VS Code. На Linux без графической сессии используй `xvfb-run -a npm run test:host`.
-
-## Публикация в Visual Studio Marketplace
-
-Запусти `npm run package` и установи полученный файл через **Extensions: Install from VSIX...** в Visual Studio Code. Имя пакета имеет формат `cdm-project-tools-<version>.vsix`, где версия берётся из `package.json`.
-
-В [панели управления Marketplace](https://marketplace.visualstudio.com/manage) открой издателя `cdm-project-community` и загрузи проверенный `.vsix`. Если публикуешь под другим издателем, обнови `publisher` в `package.json` и пересобери пакет. Подробнее о публикации через `vsce` и GitHub Actions в [документации VS Code](https://code.visualstudio.com/api/working-with-extensions/publishing-extension).
+For Node.js requirements, extension tests, VSIX packaging, and updating the existing Marketplace listing, see [development and publishing](development.md). Documentation-only changes do not require a version bump or new package.

@@ -1,8 +1,8 @@
 {
   "name": "cdm-project-tools",
-  "displayName": "CocoVS",
-  "description": "Coco-de-Mer assembly, local emulation and custom processor projects",
-  "version": "0.8.13",
+  "displayName": "CocoVS — CdM Assembly",
+  "description": "CdM-8 and CdM-16 assembly editing, CoCAS builds, debugging and RAM inspection for Coco-de-Mer processors",
+  "version": "0.8.17",
   "publisher": "cdm-project-community",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -14,7 +14,7 @@
     "url": "https://github.com/stalcker2288969/CocoVS/issues"
   },
   "homepage": "https://github.com/stalcker2288969/CocoVS#readme",
-  "keywords": ["assembly", "coco-de-mer", "cocas", "cdm8", "cdm16", "cdmbot"],
+  "keywords": ["cdm", "assembly", "assembler", "coco-de-mer", "cocas", "cdm8", "cdm16", "cdm-8", "cdm-16", "cdmbot"],
   "galleryBanner": {
     "color": "#101b33",
     "theme": "dark"
@@ -31,7 +31,9 @@
     "LICENSE", "CHANGELOG.md",
     "src/*.js", "src/*.json", "runtime/*.py", "runtime/*.java",
     "media/*.css", "media/*.js", "media/*.png", "languages/*.json", "syntaxes/*.json", "schemas/*.json",
-    "docs/*.md", "examples/**/*.asm", "examples/**/cdm-project.json", "THIRD_PARTY_NOTICES.txt"
+    "docs/*.md", "examples/!(build)/*.asm", "examples/!(build)/src/*.asm",
+    "examples/!(build)/src/lib/*.asm", "examples/!(build)/lib/*.asm",
+    "examples/**/cdm-project.json", "examples/**/*.yaml", "examples/**/*.md", "THIRD_PARTY_NOTICES.txt"
   ],
   "activationEvents": [
     "onStartupFinished",
@@ -54,6 +56,11 @@
   },
   "contributes": {
     "commands": [
+      {
+        "command": "cocovs.configureFile",
+        "title": "Configure File Execution",
+        "category": "CocoVS"
+      },
       {
         "command": "cocovs.showSuggestions",
         "title": "Show Assembly Suggestions",
@@ -170,14 +177,16 @@
       {"id": "cocovsMnemonic", "superType": "function", "description": "Processor instruction or standard macro"},
       {"id": "cocovsUserMacro", "description": "User-defined assembly macro"},
       {"id": "cocovsLabel", "description": "Assembly label declaration or reference"},
-      {"id": "cocovsControlFlow", "description": "Assembly jump, call or return"}
+      {"id": "cocovsControlFlow", "description": "Assembly jump, call or return"},
+      {"id": "cocovsDirective", "superType": "keyword", "description": "Assembler directive or startup macro"}
     ],
     "semanticTokenScopes": [
       {"scopes": {
         "cocovsMnemonic": ["support.function"],
         "cocovsUserMacro": ["keyword.control.macro"],
         "cocovsLabel": ["entity.name.type.label"],
-        "cocovsControlFlow": ["support.constant.property-value.control-flow"]
+        "cocovsControlFlow": ["support.constant.property-value.control-flow"],
+        "cocovsDirective": ["keyword.control.cocovs"]
       }}
     ],
     "configurationDefaults": {

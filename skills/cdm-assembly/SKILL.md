@@ -1,6 +1,6 @@
 ---
 name: cdm-assembly
-description: "Write, explain, debug, and port Coco-de-Mer assembly and macros for CdM-8 and CdM-16. Use for cdm8, cdm8e, cdm16, cdm16e, CoCAS, CocoIDE, Cocoemu, Logisim, CocoVS, and requests about ассемблер CdM, стек, регистры, флаги, or макросы."
+description: "Write, explain, debug, and port Coco-de-Mer assembly and macros for CdM-8 and CdM-16. Use for cdm8, cdm8e, cdm16, cdm16e, CoCAS, CocoIDE, Cocoemu, Logisim, CocoVS, and requests about CdM assembly, stacks, registers, flags, or macros."
 ---
 
 # Program Coco-de-Mer processors

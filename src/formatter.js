@@ -12,7 +12,7 @@ const FORMAT_DEFAULTS = {
 const OPEN = new Set(['if', 'while', 'do']);
 const CLOSE = new Map([['fi', 'if'], ['wend', 'while'], ['until', 'do'], ['mend', 'macro']]);
 const CLAUSE = new Map([['is', 'if'], ['then', 'if'], ['else', 'if'], ['stays', 'while']]);
-const SECTIONS = new Set(['asect', 'rsect', 'tplate']);
+const SECTIONS = new Set(['asect', 'rsect', 'tplate', 'run']);
 const LABEL = /^(?:[\w.$?']+(?:[ \t]*,[ \t]*[\w.$?']+)*[ \t]*[:>])/;
 const LIBRARY_HEADER = /^\*[ \t]*[a-z_.][\w.]*[ \t]*\/[ \t]*\d+\.?$/i;
 

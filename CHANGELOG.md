@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.8.17
+
+- Add three documented standalone CdM-8/CdM-16 examples and two multi-module projects with ten cdmbot cases.
+- Demonstrate input injection, register and RAM assertions, preserved memory, stack checks, coverage and selected-case runs.
+- Ship example READMEs and YAML test suites in the VSIX.
+- Exclude generated example build outputs from the packaged assembly sources.
+
+## 0.8.16
+
+- Place standalone build artifacts beside the source file, in its local `build/` directory.
+- Name the extension CocoVS — CdM Assembly and add CdM search keywords.
+- Include editor and debugger screenshots in the README.
+- Translate the debug CodeLens label and tooltip according to the VS Code display language (Russian or English).
+
+## 0.8.15
+
+- Remember processor and memory architecture per standalone assembly file; configure them on first launch or with Configure File Execution.
+- Add a debug CodeLens above `run` entry labels and conventional entry names such as `main`, `start`, `program` and `init`.
+- Launch the file selected by the debug CodeLens independently of the active editor.
+
+## 0.8.14
+
+- Keep section indentation after `run main`, including routine bodies and structured blocks.
+- Highlight `run` as a directive in both syntax and semantic highlighting.
+
 ## 0.8.13
 
 - Complete symbolic comparisons after `is`, `stays` and `until`, with explicit signed (`s`) and unsigned (`u`) variants that insert CoCAS condition codes.

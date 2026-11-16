@@ -45,6 +45,28 @@ test('formatting preserves assembly tokens, comments and line endings, and is id
   assert.throws(() => formatSettings({indentSize: 0}), /indentSize/);
 });
 
+test('run starts section indentation for routines and blocks without changing macro indentation', () => {
+  const body = [
+    '', '# Frame', '# SP + 0: j', 'sort_v3:', 'addsp -3', '', 'getstack r1, 5 # N',
+    'while', 'tst r1', 'stays nz', 'dec r1', 'wend', 'rts', 'main:', 'halt', 'end', '',
+  ].join('\n');
+  const prefix = 'macro getstack/2\nldsa $1, $2\nmend\n';
+  const expectedBody = formatAssembly('asect 0\n' + body).slice('asect 0\n'.length);
+  for (const header of ['run main', 'RUN main', '    run main # entry']) {
+    for (const settings of [formatSettings({}), formatSettings({indentStyle: 'tabs', indentSize: 2})]) {
+      const input = prefix + header + '\n' + body;
+      const formatted = formatAssembly(input, settings);
+      const expected = formatAssembly(prefix + 'asect 0\n' + body, settings)
+        .replace('asect 0', header.trim().replace(' # entry', '  # entry'));
+      assert.equal(formatted, expected);
+      assert.equal(formatAssembly(formatted, settings), formatted);
+    }
+  }
+  assert.match(expectedBody, /sort_v3:\n    addsp -3/);
+  assert.equal(formatAssembly('macro boot/1\nrun $1\nldi r0, 0\nmend\nrun main\nmain:\nhalt\nend'),
+    'macro boot/1\n    run $1\n    ldi r0, 0\nmend\nrun main\nmain:\n    halt\nend');
+});
+
 test('the VS Code formatter applies project settings to save and creates the settings file without overwriting', async t => {
   const root = await fixture(t);
   const project = path.join(root, 'nested');
@@ -52,7 +74,7 @@ test('the VS Code formatter applies project settings to save and creates the set
   await fs.mkdir(path.dirname(sourceFile), {recursive: true});
   await fs.writeFile(path.join(project, 'cdm-project.json'), '{"target":"cdm8","entry":"lib/main.asm"}');
   const configFile = path.join(project, FORMAT_FILE);
-  const initial = 'asect 0\n label:\n\t halt # done\nend';
+  let initial = 'asect 0\n label:\n\t halt # done\nend';
   const uri = fsPath => ({fsPath, scheme: 'file'});
   const document = {uri: uri(sourceFile), fileName: sourceFile, languageId: 'cocovs-assembly', getText: () => initial};
   const registered = {};
@@ -106,6 +128,10 @@ test('the VS Code formatter applies project settings to save and creates the set
   await fs.writeFile(configFile, '{"formatOnSave":false,"indentSize":2}');
   assert.deepEqual(await save(), []);
   assert.equal(apply(registered.provider.provideDocumentFormattingEdits(document)), 'asect 0\nlabel:\n  halt  # done\nend');
+  initial = 'run main\n main:\nhalt # done\nend';
+  await fs.writeFile(configFile, '{"indentSize":2}');
+  assert.equal(apply(await save()), 'run main\nmain:\n  halt  # done\nend');
+  assert.equal(apply(registered.provider.provideDocumentFormattingEdits(document)), 'run main\nmain:\n  halt  # done\nend');
 });
 
 test('CoCAS emits the same image after formatting structured code', {skip: process.env.COCOVS_INTEGRATION !== '1'}, async t => {

@@ -1,0 +1,16 @@
+version: 1
+source_roots: [src]
+suites:
+  byte_sum:
+    program: src/main.asm
+    suite: tests/sum.yaml
+syntax:
+  all_modules:
+    architecture: cdm8
+    directories: [src]
+structure:
+  files: [cdm-project.json, src/main.asm, src/data.asm, src/lib/sum.asm, tests/sum.yaml]
+thresholds:
+  # data.asm has no executable instructions, so two of three files execute.
+  file_percent: 66
+  line_percent: 80

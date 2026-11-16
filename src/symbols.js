@@ -151,7 +151,8 @@ function colorTokens(line, macros, labels, instructions) {
   const {name, end, column} = operation;
   if (macros.has(name)) tokens.push({column, name, kind: 'macro'});
   else if (instructions.has(name.toLowerCase())) {
-    tokens.push({column, name, kind: controlFlow.has(name.toLowerCase()) ? 'control' : 'instruction'});
+    tokens.push({column, name, kind: name.toLowerCase() === 'run' ? 'directive' :
+      controlFlow.has(name.toLowerCase()) ? 'control' : 'instruction'});
   }
   for (const match of code.slice(end).matchAll(operandIdentifier)) {
     if (labels.has(match[0]) && !register.test(match[0])) {

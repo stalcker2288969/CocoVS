@@ -15,6 +15,7 @@ const {createDebugWorker} = require('./debug-worker');
 const {memoryView} = require('./memory-view');
 const {registerTesting} = require('./testing');
 const {fileKey} = require('./live-check');
+const {chooseLaunchProfile} = require('./launch-profile');
 
 const OFFICIAL = 'cdm-processors.vscode-cdm-extension';
 const NAME = 'CocoVS';
@@ -28,6 +29,8 @@ function activate(context) {
   const pendingReports = new Set();
   let live = new Map();
   let updateMemory;
+  const profileChanges = new vscode.EventEmitter();
+  context.subscriptions.push(profileChanges);
   context.subscriptions.push(output, diagnostics);
   const showError = error => vscode.window.showErrorMessage('CocoVS: ' + error.message.split(/\r?\n/)[0]);
   const {setup, toolchain} = registerSetup(context, output, showError);
@@ -56,6 +59,7 @@ function activate(context) {
             } else {
               job = await currentJob(selectedFolder, false);
             }
+            if (!job) return undefined;
             if (!LOCAL_DEBUG.includes(job.config.target)) throw new Error('Local debugging is unavailable for ' + job.config.target + '.');
             return withLocalDebugBuild(job, options);
           }, token);
@@ -103,8 +107,8 @@ function activate(context) {
       vscode.workspace.workspaceFolders?.[0];
   }
 
-  async function currentJob(folder, task, projectPath) {
-    const activeDocument = vscode.window.activeTextEditor?.document;
+  async function currentJob(folder, task, projectPath, document, configure = false) {
+    const activeDocument = document ?? vscode.window.activeTextEditor?.document;
     const doc = !folder || (activeDocument && vscode.workspace.getWorkspaceFolder(activeDocument.uri)?.uri.toString() === folder.uri.toString())
       ? activeDocument : undefined;
     const uri = doc?.uri;
@@ -116,8 +120,18 @@ function activate(context) {
       const root = await fs.realpath(workspace);
       workspace = confined(root, await fs.realpath(confined(workspace, projectPath)));
     }
-    return createJob({file: uri?.fsPath, languageId: doc?.languageId, workspace, task,
+    const job = createJob({file: uri?.fsPath, languageId: doc?.languageId, workspace, task,
       target: settings.get('target'), architecture: settings.get('architecture'), address: settings.get('address')});
+    if (!job.manifest && !task) {
+      const profile = await chooseLaunchProfile(context.globalState, uri.fsPath, job.config,
+        (...args) => vscode.window.showQuickPick(...args), configure);
+      if (!profile) return undefined;
+      Object.assign(job.config, profile);
+      profileChanges.fire();
+    } else if (configure) {
+      throw new Error('This file uses cdm-project.json. Change its target and architecture in the project configuration.');
+    }
+    return job;
   }
 
   function groupProblems(root, problems) {
@@ -215,7 +229,7 @@ function activate(context) {
   }
 
   async function withBuild(job, options, onBuilt) {
-    const key = artifactPaths(job, path.join(await fs.realpath(job.root), 'build')).image;
+    const key = artifactPaths({...job, root: await fs.realpath(job.root)}).image;
     if (active.has(key)) throw new Error('A build or run is already active for this output.');
     active.add(key);
     const report = {sources: new Set([...job.sources, MANIFEST].map(file => fileKey(path.resolve(job.root, file))))};
@@ -239,9 +253,10 @@ function activate(context) {
     }
   }
 
-  async function perform(mode, folder, task, projectPath, options) {
+  async function perform(mode, folder, task, projectPath, options, document) {
     await saveSources();
-    const job = await currentJob(folder, task, projectPath);
+    const job = await currentJob(folder, task, projectPath, document);
+    if (!job) return;
     const target = job.config.target;
     if ((mode === 'debug' || mode === 'debugExternal') && !['cdm8', 'cdm8e', 'cdm16'].includes(target)) {
       throw new Error('CdM Processors debugging supports CdM-8, CdM-8e and CdM-16. Use a project runner for this target.');
@@ -290,8 +305,17 @@ function activate(context) {
     return uri ? vscode.workspace.getWorkspaceFolder(uri) : editorFolder();
   }
 
-  function runCommand(mode) {
-    return withProgress(mode, options => perform(mode, activeLaunchFolder(), false, '', options));
+  async function runCommand(mode, uri) {
+    requireTrust();
+    const document = uri ? await vscode.workspace.openTextDocument(uri) : vscode.window.activeTextEditor?.document;
+    const folder = document ? vscode.workspace.getWorkspaceFolder(document.uri) : activeLaunchFolder();
+    return withProgress(mode, options => perform(mode, folder, false, '', options, document));
+  }
+
+  async function configureFile() {
+    requireTrust();
+    await saveSources();
+    await currentJob(activeLaunchFolder(), false, '', undefined, true);
   }
 
   function resolveTask(task) {
@@ -354,12 +378,13 @@ function activate(context) {
 
   const actions = {
     'cocovs.setup': () => setup(), 'cdmProject.init': init, 'cdmProject.sync': () => sync(),
-    'cdmProject.build': () => runCommand('build'), 'cocovs.run': () => runCommand('run'), 'cdmProject.debug': () => runCommand('debug'),
+    'cdmProject.build': uri => runCommand('build', uri), 'cocovs.run': uri => runCommand('run', uri), 'cdmProject.debug': uri => runCommand('debug', uri),
+    'cocovs.configureFile': configureFile,
     'cocovs.debugExternal': () => runCommand('debugExternal'),
   };
   for (const [name, action] of Object.entries(actions)) {
-    context.subscriptions.push(vscode.commands.registerCommand(name, async () => {
-      try { await action(); } catch (error) { output.appendLine(error.message); showError(error); }
+    context.subscriptions.push(vscode.commands.registerCommand(name, async (...args) => {
+      try { await action(...args); } catch (error) { output.appendLine(error.message); showError(error); }
     }));
   }
   context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(document => {
@@ -370,7 +395,7 @@ function activate(context) {
     try { sync(document); } catch (error) { showError(error); }
   }));
   for (const [feature, initialize] of [
-    ['Editor', () => registerEditor(context, {toolchain, publishLive, invalidateBuild})],
+    ['Editor', () => registerEditor(context, {toolchain, publishLive, invalidateBuild, onDidChangeLaunchProfile: profileChanges.event})],
     ['Testing', () => registerTesting(context)],
     ['Memory view', () => { updateMemory = memoryView(context); }],
   ]) {
