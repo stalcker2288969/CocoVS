@@ -4,6 +4,8 @@ CocoVS integrates cdmbot with VS Code's **Testing** view. The [byte-sum](../exam
 
 ## Prerequisites
 
+Use **CocoVS: Install or Update cdmbot** to install the bundled development version and enable its terminal command in the user PATH. Existing explicit Python paths and test-only installations remain supported. Automatic package discovery from includes requires cdmbot 0.2.1 or newer. See [development tools and packages](cdmbot-development.md).
+
 Open a trusted local folder containing a cdmbot project. Use a Python environment where `python -m cdmbot --help` works. If CocoVS cannot detect it, set `cocovs.cdmbotPythonPath` to that environment's Python executable.
 
 CdM-16 tests also require JDK 17+ and Cocoemu from a compatible `cdm-devkit` installation in the cdmbot environment. Make the JDK available to cdmbot, for example through `JAVA_HOME`. `cocovs.javaPath` configures the extension's runtime; it does not configure cdmbot's separate runtime. CocoVS toolchain setup does not by itself install cdmbot into your test environment.
@@ -83,7 +85,7 @@ cases:
 
 Use `architecture: cdm8` or `cdm16`. The `unified` memory model corresponds to CocoVS's `vonNeumann`; both tools also support `harvard`. On CdM-16 an integer in `setup.input` represents one native word, but a list always contains bytes. `[255, 255, 2, 0]` encodes little-endian words 65535 and 2. Expected word-sized memory also needs bytes, such as `memory: {0x0412: [1, 0]}`.
 
-cdmbot does not interpret CocoVS `# @include` comments. List additional modules in `build.sources`, without duplicating the main program. The sources and suite must use matching processor and memory configurations.
+cdmbot 0.2.1 discovers modules referenced by `# @include` in the main source, including catalog packages. Additional modules can also be listed in `build.sources`. The sources and suite must use matching processor and memory configurations.
 
 ## Run tests in VS Code
 

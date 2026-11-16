@@ -4,8 +4,9 @@ const path = require('node:path');
 const vscode = require('vscode');
 const {ASSEMBLY, inferTarget, loadProject, locateProject, resolveSources} = require('./project');
 const {MANIFEST_PATTERN, IGNORE, findCdmbot, jsonResult, editCdmbot, exactCasePattern} = require('./cdmbot');
+const {managedCdmbotPython} = require('./development-tools');
 
-function registerTesting(context) {
+function registerTesting(context, onDidInstall) {
   const controller = vscode.tests.createTestController('cocovs-cdmbot', 'CocoVS · cdmbot');
   const projects = new Map();
   const metadata = new WeakMap();
@@ -13,7 +14,7 @@ function registerTesting(context) {
   let generation = 0;
   let python;
   const settings = uri => vscode.workspace.getConfiguration('cocovs', uri);
-  const tool = () => python ??= findCdmbot(settings().get('cdmbotPythonPath')).then(found => {
+  const tool = () => python ??= findCdmbot(settings().get('cdmbotPythonPath'), managedCdmbotPython(context.globalStorageUri?.fsPath)).then(found => {
     if (!found) python = undefined;
     return found;
   });
@@ -274,6 +275,7 @@ function registerTesting(context) {
   }
 
   controller.refreshHandler = refresh;
+  if (onDidInstall) context.subscriptions.push(onDidInstall(() => { python = undefined; schedule(); }));
   const watcher = vscode.workspace.createFileSystemWatcher('**/*.{yaml,yml}');
   context.subscriptions.push(controller, controller.createRunProfile('Run with cdmbot', vscode.TestRunProfileKind.Run, runTests, true),
     watcher, watcher.onDidCreate(schedule), watcher.onDidChange(schedule), watcher.onDidDelete(schedule),

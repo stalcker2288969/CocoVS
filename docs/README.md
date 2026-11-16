@@ -1,5 +1,6 @@
 # CocoVS documentation
 
+- [cdmbot development tools and packages](cdmbot-development.md): installation, CLI workflows, analysis, libraries, locks, and registries.
 - [User guide](guide.md): installation, standalone files, projects, editing, formatting, debugging, and RAM inspection.
 - [Automated testing](testing.md): cdmbot setup, the Testing view, YAML cases, coverage, and terminal commands.
 - [Development and publishing](development.md): source setup, extension tests, VSIX packaging, and Marketplace updates.

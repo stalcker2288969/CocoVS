@@ -75,7 +75,7 @@ The [tested CdM-16 examples](../examples/word-sum/README.md) use a reset vector 
 
 ## Multi-file projects
 
-Open a folder and run **CocoVS: Initialize Project**. It creates `main.asm` if absent, `cdm-project.json`, a build task, and an F5 profile for supported debuggers.
+Open a folder and run **CocoVS: Initialize Project**. For a new project it creates `src/main.asm`, `cdm-project.json`, a smoke suite, a build task, and an F5 profile for supported debuggers. It shares the application template with `cdmbot create`. Existing `main.asm` or `src/main.asm` files are preserved.
 
 ```json
 {
@@ -186,6 +186,8 @@ After `# @`, completion offers documentation tags; after `@type:`, display types
 Use **CocoVS: Debug via CdM Processors** for an external Logisim debugger; its launch configuration supplies the circuit and server address. CdM-8e uses this external workflow. Refresh older generated CdM-16 profiles with **CocoVS: Generate Build and Debug Configuration**.
 
 ## Automated tests
+
+cdmbot also provides project creation, builds, execution, source statistics, syntax analysis, and packages. Run **CocoVS: Install or Update cdmbot** to install the tool and enable its terminal command, then **Analyze Code with cdmbot**, **Create cdmbot Project**, or **Browse Assembly Packages**. See the [development-tool workflow](cdmbot-development.md). The Testing view supports legacy suites.
 
 CocoVS discovers cdmbot `project.yaml` / `project.yml` manifests with a `suites` section in **Testing**. Run a project, suite, or case, with links to YAML locations. **Project checks** reports structure, syntax, and coverage thresholds; coverage needs a full project run.
 

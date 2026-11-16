@@ -3,7 +3,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const {command, findDebug16Python, processResult} = require('./tools');
-const {ASSEMBLY, combinedSource, confined} = require('./project');
+const {ASSEMBLY, combinedSource, confined, verifyPackages, resolveSources, sourceDirective} = require('./project');
 const {dataLabels} = require('./data-labels');
 const {operandProblems} = require('./operands');
 const {describeProblems, friendlyMessage, plainOutput} = require('./assembly-errors');
@@ -96,6 +96,19 @@ async function publishArtifacts(temporary, final, hasDebug) {
 async function build(job, cocas, options = {}, run = processResult) {
   options.signal?.throwIfAborted();
   const root = await fs.realpath(job.root);
+  const packageManager = options.packageManager ?? options.cdmbot;
+  if (packageManager && await hasPackageImports(job)) {
+    const args = ['-I', '-m', 'cdmbot', 'pub', 'get', '--path', path.resolve(root, job.config.entry),
+      '--workspace', root, '--target', job.config.target, '--json'];
+    if (options.packageRegistry) args.push('--registry', options.packageRegistry);
+    const restored = await run(packageManager, args, {...options, cwd: root, onOutput: undefined});
+    let report;
+    try { report = JSON.parse(restored.stdout); } catch { throw new Error(restored.stderr || 'Invalid package restore report.'); }
+    if (restored.code || !report.passed) return {ok: false, problems: [], message: report.error || 'Package restore failed.'};
+    job = {...job, sources: resolveSources(root, job.config)};
+  }
+  try { verifyPackages(root, job.config); }
+  catch (error) { return {ok: false, problems: [], message: error.message}; }
   const output = buildDirectory({...job, root});
   await fs.mkdir(output, {recursive: true});
   const outputReal = confined(root, await fs.realpath(output));
@@ -116,11 +129,16 @@ async function build(job, cocas, options = {}, run = processResult) {
     const invalid = native ? operandProblems(textSources, job.config.target) : [];
     if (invalid.length) return failed(describeProblems(invalid, root, textSources, options.language));
     await fs.writeFile(temporary.combined, combinedSource(root, job.sources, native));
-    const invocation = native
+    let invocation = native
       ? {tool: cocas, args: ['-t', job.config.target, '-o', temporary.image, '--debug', temporary.debug, ...sources]}
       : customInvocation(job.config.assembler, values, sources);
+    if (native && options.cdmbot) {
+      invocation = {tool: options.cdmbot, args: ['-I', '-m', 'cdmbot', 'build', path.resolve(root, job.config.entry),
+        '--workspace', root, '--target', job.config.target, '--architecture', job.config.architecture,
+        '--output', stage, '--name', path.basename(temporary.image, '.img'), '--json']};
+    }
     if (!invocation.tool) throw new Error('Cannot find cocas. Run CocoVS: Set Up Toolchain.');
-    if (job.config.target === 'cdm16') {
+    if (job.config.target === 'cdm16' && !options.cdmbot) {
       const python = options.debugPython ?? await findDebug16Python(cocas,
         [options.python, command(process.platform === 'win32' ? 'python.exe' : 'python3')], run);
       if (python) {
@@ -130,8 +148,14 @@ async function build(job, cocas, options = {}, run = processResult) {
         throw new Error('Could not load the CoCAS Python module for CdM-16 debugging.');
       }
     }
-    const result = await run(invocation.tool, invocation.args,
+    let result = await run(invocation.tool, invocation.args,
       {...options, cwd: root, onOutput: native ? undefined : options.onOutput});
+    if (native && options.cdmbot) {
+      let report;
+      try { report = JSON.parse(result.stdout); } catch { throw new Error(result.stderr || 'cdmbot returned an invalid build report.'); }
+      if (!report.passed) result = {...result, code: result.code || 1, stdout: '', stderr: report.error || 'cdmbot build failed.'};
+      else result = {...result, stdout: ''};
+    }
     const outputText = [...new Set([result.stderr, result.stdout].map(text => plainOutput(text).trim()).filter(Boolean))].join('\n');
     let {problems, parserErrors} = assemblerProblems(outputText, native ? textSources : []);
     const reportedError = native && (parserErrors.length > 0 || problems.some(problem => !problem.warning) ||
@@ -141,7 +165,7 @@ async function build(job, cocas, options = {}, run = processResult) {
       if (!native) return {ok: false, problems, message: outputText || 'Assembler exited with code ' + result.code};
       const detail = outputText.replace(/^\[[^\]\r\n]+\]\s+ERROR\s*\r?\n/i, '');
       const formatted = friendlyMessage(detail, options.language);
-      const fallback = formatted !== detail ? formatted :
+      const fallback = options.cdmbot || formatted !== detail ? formatted :
         /^ru(?:-|$)/i.test(options.language ?? '') ? 'Сборка CoCAS завершилась ошибкой. Подробности в Output → CocoVS.' :
           'CoCAS build failed. See Output → CocoVS for details.';
       return failed(problems, fallback, outputText);
@@ -164,4 +188,12 @@ async function build(job, cocas, options = {}, run = processResult) {
   }
 }
 
-module.exports = {artifactPaths, assemblerProblems, build, buildDirectory, customInvocation, diagnostics, expandArgs};
+async function hasPackageImports(job) {
+  for (const name of job.sources.filter(name => ASSEMBLY.test(name))) {
+    const text = await fs.readFile(path.resolve(job.root, name), 'utf8');
+    if (text.split(/\r?\n/).some(line => sourceDirective(line)?.path.startsWith('@'))) return true;
+  }
+  return false;
+}
+
+module.exports = {artifactPaths, assemblerProblems, build, buildDirectory, customInvocation, diagnostics, expandArgs, hasPackageImports};

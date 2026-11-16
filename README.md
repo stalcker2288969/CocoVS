@@ -12,6 +12,7 @@ CocoVS brings CdM-8 and CdM-16 (Coco-de-Mer) assembly editing, CoCAS builds, sou
 - Build and run programs through CoCAS. Use `cdm-project.json` to configure the target, memory architecture, and source files for a project.
 - Step through CdM-8 and CdM-16 source, set breakpoints, and inspect registers, the stack, and RAM. Hover over a RAM byte to see its address, value, and any data labels with their types.
 - Run cdmbot test suites from the VS Code **Testing** view.
+- Install cdmbot from CocoVS, analyze code statistics and syntax, create projects, and manage Git-backed assembly packages. See the [development-tool workflow](docs/cdmbot-development.md).
 
 ## Screenshots
 

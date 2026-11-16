@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.1
+
+- Bundle cdmbot 0.2.1 and enable its terminal command in the user PATH during installation.
+- Share application templates between Initialize Project and cdmbot create, including processor startup and smoke tests.
+- Browse a Git-hosted catalog with one metadata folder per package, descriptions and publishers.
+- Automatically restore packages referenced by existing `# @include "@name/file.asm"` directives on build and run.
+- Support registry dependencies and package commands inside library projects while preserving exact lock files.
+
+## 0.8.18
+
+- Bundle cdmbot 0.2.0 with installation into private extension storage and development API detection.
+- Add code analysis, project creation, and assembly package search/add/restore/update/remove commands.
+- Use compatible cdmbot builds when available, retaining the original CoCAS backend and legacy test commands.
+- Resolve locked `@package/path.asm` imports for applications, standalone files, completion, and diagnostics.
+
 ## 0.8.17
 
 - Add three documented standalone CdM-8/CdM-16 examples and two multi-module projects with ten cdmbot cases.

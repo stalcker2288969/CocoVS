@@ -60,12 +60,12 @@ test('standalone launch remembers each file, supports cancellation and reconfigu
   };
   const file = path.resolve(__dirname, '../src/extension.js');
   const requireModule = createRequire(file);
-  const {artifactPaths} = requireModule('./build');
+  const {artifactPaths, hasPackageImports} = requireModule('./build');
   const replacements = {
     vscode: api,
     './editor': {registerEditor() {}}, './testing': {registerTesting() {}}, './memory-view': {memoryView() {}},
     './setup': {registerSetup: () => ({toolchain: {prepare: async () => ({})}})},
-    './build': {artifactPaths, build: async job => {
+    './build': {artifactPaths, hasPackageImports, build: async job => {
       jobs.push(structuredClone(job));
       return {ok: true, problems: [], artifacts: artifactPaths(job)};
     }},

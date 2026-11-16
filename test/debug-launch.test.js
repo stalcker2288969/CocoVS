@@ -42,7 +42,7 @@ test('the native VS Code launch provider builds an active CdM-8 file with no lau
       activeTextEditor: {document: {uri: uri(source), languageId: 'cocovs-assembly'}},
       createOutputChannel: () => ({show() {}, append: text => output.push(text), appendLine: text => output.push(text)}),
       showErrorMessage: message => errors.push(message),
-      showQuickPick: async items => typeof items[0] === 'string' ? 'cdm8' : items[0],
+      showQuickPick: async items => items.includes('cdm8') ? 'cdm8' : items[0],
       showTextDocument: async () => {},
       withProgress: (_options, action) => action(undefined, token),
     },
@@ -129,7 +129,7 @@ test('the native VS Code launch provider builds an active CdM-8 file with no lau
   assert.equal(generated.configurations[0].artifacts, undefined);
   assert.equal(tasks.tasks[0].label, 'CdM Project: Compile');
   assert.equal(tasks.tasks[0].type, 'cocovs');
-  assert.match(await fs.readFile(path.join(root, 'main.asm'), 'utf8'), /halt/);
+  assert.match(await fs.readFile(path.join(root, 'src/main.asm'), 'utf8'), /halt/);
   const old = provider.resolveDebugConfiguration(folder, {...generated.configurations[0], root,
     target: 'cdm16', architecture: 'harvard', artifacts: launch.artifacts, preLaunchTask: tasks.tasks[0].label});
   assert.equal(old.preLaunchTask, undefined);
@@ -148,7 +148,7 @@ test('the native VS Code launch provider builds an active CdM-8 file with no lau
   assert.equal(await exitCode, 0, taskOutput.join(''));
   assert.match(taskOutput.join(''), /Built .*out\.img/);
   const image = await fs.readFile(projectLaunch.artifacts.image);
-  await fs.writeFile(path.join(root, 'main.asm'), 'asect 0\nldi r0, a, a\nhalt\na: dc 0\nend\n');
+  await fs.writeFile(path.join(root, 'src/main.asm'), 'asect 0\nldi r0, a, a\nhalt\na: dc 0\nend\n');
   assert.equal(await provider.resolveDebugConfigurationWithSubstitutedVariables(folder, old, token), undefined);
   assert.match(errors[0], /ldi: expected 2 arguments, got 3/);
   assert.deepEqual(await fs.readFile(projectLaunch.artifacts.image), image);

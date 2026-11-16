@@ -2,6 +2,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const {createHash} = require('node:crypto');
+const {isDeepStrictEqual} = require('node:util');
 
 const MANIFEST = 'cdm-project.json';
 const PROJECT_DEBUG = 'CdM Project: Debug';
@@ -71,11 +73,62 @@ function sourceDirective(line) {
   return {name, folder, path: (folder ? name.slice(0, -1) : name).replaceAll('\\', '/')};
 }
 
-function resolveSources(root, config, {read = readText, onError} = {}) {
+function verifyPackages(root, config) {
+  const packageRoot = locateProject(path.resolve(root, config.entry), root, 'cdm-packages.json');
+  if (!packageRoot) return;
+  if (fs.existsSync(path.join(packageRoot, '.cdm', 'operation.lock'))) throw new Error('A package operation is in progress. Retry when it finishes.');
+  const dependencies = JSON.parse(readText(path.join(packageRoot, 'cdm-packages.json'))).dependencies;
+  if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) throw new Error('Invalid cdm-packages.json.');
+  const lock = Object.keys(dependencies).length ? JSON.parse(readText(path.join(packageRoot, 'cdm-packages.lock.json'))).packages : {};
+  const pending = Object.entries(dependencies), checked = new Set();
+  while (pending.length) {
+    const [name, spec] = pending.pop();
+    if (checked.has(name)) continue;
+    checked.add(name);
+    if (!/^[a-z][a-z0-9_-]{0,63}$/.test(name)) throw new Error('Invalid package name.');
+    const entry = lock?.[name];
+    if (!entry || spec !== '*' && !isDeepStrictEqual(entry.source, spec)) throw new Error('Package is not locked: ' + name);
+    if (!entry.targets?.includes(config.target)) throw new Error('Package does not support ' + config.target + ': ' + name);
+    const directory = path.join(packageRoot, '.cdm', 'packages', name);
+    const hashes = {};
+    function scan(folder) {
+      if (fs.lstatSync(folder).isSymbolicLink()) throw new Error('Package symlinks are not supported.');
+      confined(fs.realpathSync(root), fs.realpathSync(folder));
+      for (const filename of fs.readdirSync(folder)) {
+        const file = path.join(folder, filename), stat = fs.lstatSync(file);
+        if (stat.isSymbolicLink()) throw new Error('Package symlinks are not supported.');
+        if (stat.isDirectory()) scan(file);
+        else if (stat.isFile()) {
+          if (stat.size > 8 * 1024 * 1024) throw new Error('Package file exceeds its size limit.');
+          hashes[path.relative(directory, file).split(path.sep).join('/')] = createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+        }
+      }
+    }
+    scan(directory);
+    if (!isDeepStrictEqual(hashes, entry.files)) throw new Error('Package sources are missing or modified: ' + name + '. Restore assembly packages first.');
+    pending.push(...Object.entries(entry.dependencies ?? {}));
+  }
+}
+
+function resolveSources(root, config, {read = readText, onError, allowMissingPackages = false} = {}) {
   const realRoot = fs.realpathSync(root);
   const visited = new Set();
   const stack = new Map();
   const result = [];
+  const packageRoot = locateProject(path.resolve(root, config.entry), root, 'cdm-packages.json') ?? root;
+  function dependency(name, parent) {
+    if (!name.startsWith('@')) return path.resolve(path.dirname(parent), name);
+    const match = /^@([a-z][a-z0-9_-]{0,63})\/(.+)$/.exec(name);
+    if (!match) throw new Error('Package imports use @name/path.asm.');
+    const lockFile = path.join(packageRoot, 'cdm-packages.lock.json');
+    if (allowMissingPackages && !fs.existsSync(lockFile)) return undefined;
+    const lock = JSON.parse(readText(lockFile));
+    if (allowMissingPackages && (!Object.hasOwn(lock.packages ?? {}, match[1]) ||
+        !fs.existsSync(path.join(packageRoot, '.cdm', 'packages', match[1])))) return undefined;
+    if (!Object.hasOwn(lock.packages ?? {}, match[1])) throw new Error('Package is not locked: ' + match[1] + '. Restore assembly packages first.');
+    const base = confined(root, path.join(packageRoot, '.cdm', 'packages', match[1]));
+    return confined(base, path.resolve(base, match[2]));
+  }
   function visit(name, parent) {
     try {
       visitSource(name, parent);
@@ -85,7 +138,9 @@ function resolveSources(root, config, {read = readText, onError} = {}) {
     }
   }
   function visitFolder(name, parent) {
-    const absolute = confined(root, path.resolve(path.dirname(parent), name));
+    const resolved = dependency(name, parent);
+    if (!resolved) return;
+    const absolute = confined(root, resolved);
     confined(realRoot, fs.realpathSync(absolute));
     const entries = fs.readdirSync(absolute).filter(name => !name.startsWith('.') && ASSEMBLY.test(name)).sort();
     for (const entry of entries) {
@@ -95,7 +150,9 @@ function resolveSources(root, config, {read = readText, onError} = {}) {
     }
   }
   function visitSource(name, parent) {
-    const absolute = confined(root, path.resolve(parent ? path.dirname(parent) : root, name));
+    const resolved = parent ? dependency(name, parent) : path.resolve(root, name);
+    if (!resolved) return;
+    const absolute = confined(root, resolved);
     if (!fs.statSync(absolute, {throwIfNoEntry: false})?.isFile()) {
       throw new Error('Missing assembly dependency: ' + path.relative(root, absolute));
     }
@@ -228,4 +285,4 @@ function syncConfigs(root, config, projectRoot = root) {
 }
 
 module.exports = {ASSEMBLY, INCLUDE, MANIFEST, PROJECT_BUILD, PROJECT_DEBUG, TARGETS, combinedSource, confined,
-  inferTarget, loadProject, locateProject, readJsonc, resolveSources, sourceDirective, syncConfigs};
+  inferTarget, loadProject, locateProject, readJsonc, resolveSources, sourceDirective, syncConfigs, verifyPackages};

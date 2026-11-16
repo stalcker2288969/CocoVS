@@ -3,7 +3,7 @@
 const vscode = require('vscode');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const {build, artifactPaths} = require('./build');
+const {build, artifactPaths, hasPackageImports} = require('./build');
 const {registerEditor} = require('./editor');
 const {createJob} = require('./jobs');
 const {ASSEMBLY, MANIFEST, PROJECT_BUILD, PROJECT_DEBUG, TARGETS, confined, loadProject, locateProject,
@@ -16,6 +16,8 @@ const {memoryView} = require('./memory-view');
 const {registerTesting} = require('./testing');
 const {fileKey} = require('./live-check');
 const {chooseLaunchProfile} = require('./launch-profile');
+const {registerDevelopment} = require('./development-tools');
+const {initializeProject} = require('./project-template');
 
 const OFFICIAL = 'cdm-processors.vscode-cdm-extension';
 const NAME = 'CocoVS';
@@ -29,6 +31,7 @@ function activate(context) {
   const pendingReports = new Set();
   let live = new Map();
   let updateMemory;
+  let development;
   const profileChanges = new vscode.EventEmitter();
   context.subscriptions.push(profileChanges);
   context.subscriptions.push(output, diagnostics);
@@ -55,7 +58,7 @@ function activate(context) {
             if (config.name === PROJECT_DEBUG && config.root) {
               const root = await fs.realpath(config.root);
               if (selectedFolder) confined(await fs.realpath(selectedFolder.uri.fsPath), root);
-              job = createJob({workspace: root, task: true});
+              job = createJob({workspace: root, task: true, allowMissingPackages: true});
             } else {
               job = await currentJob(selectedFolder, false);
             }
@@ -120,7 +123,7 @@ function activate(context) {
       const root = await fs.realpath(workspace);
       workspace = confined(root, await fs.realpath(confined(workspace, projectPath)));
     }
-    const job = createJob({file: uri?.fsPath, languageId: doc?.languageId, workspace, task,
+    const job = createJob({file: uri?.fsPath, languageId: doc?.languageId, workspace, task, allowMissingPackages: true,
       target: settings.get('target'), architecture: settings.get('architecture'), address: settings.get('address')});
     if (!job.manifest && !task) {
       const profile = await chooseLaunchProfile(context.globalState, uri.fsPath, job.config,
@@ -241,7 +244,13 @@ function activate(context) {
         java: options.java, debug16: target === 'cdm16' && options.localDebug, onOutput: options.onOutput,
       });
       options.signal.throwIfAborted();
-      const result = await build(job, status.cocas, {...options, python: status.python,
+      const backend = vscode.workspace.getConfiguration('cocovs', vscode.Uri.file(path.resolve(job.root, job.config.entry))).get('developmentBackend', 'auto');
+      const importsPackages = target !== 'custom' && await hasPackageImports(job);
+      const packageManager = importsPackages && development ? await development.ensure() : undefined;
+      if (importsPackages && !packageManager) throw new Error('Install cdmbot to restore imported assembly packages.');
+      const cdmbot = backend === 'auto' && target !== 'custom' && development ? packageManager ?? await development.manager.find() : undefined;
+      const packageRegistry = vscode.workspace.getConfiguration('cocovs').get('packageRegistry');
+      const result = await build(job, status.cocas, {...options, cdmbot, packageManager, packageRegistry, python: status.python,
         debugPython: status.debugPython, language: vscode.env?.language});
       if (!report.stale) publish(job, report, result.problems);
       if (!result.ok) throw new Error(result.message + (result.details ? '\n\nCoCAS output:\n' + result.details : ''));
@@ -353,14 +362,9 @@ function activate(context) {
     if (!(await fs.stat(file).catch(error => { if (error.code !== 'ENOENT') throw error; }))) {
       const target = await vscode.window.showQuickPick(TARGETS, {placeHolder: 'Processor target'});
       if (!target) return;
-      const config = {entry: 'main.asm', target, architecture: 'vonNeumann', environment: target === 'cdm8e' ? 'external' : 'emulator', extraSources: []};
-      if (target === 'custom') {
-        config.assembler = {command: './tools/assembler', args: ['-o', '$' + '{image}', '$' + '{sources}']};
-        config.instructions = [];
-      }
-      await fs.writeFile(file, JSON.stringify(config, null, 2) + '\n', {flag: 'wx'});
-      await fs.writeFile(path.join(root, 'main.asm'), target === 'custom' ? '' : 'asect 0\nstart:\n    halt\nend\n',
-        {flag: 'wx'}).catch(error => { if (error.code !== 'EEXIST') throw error; });
+      const architecture = await vscode.window.showQuickPick(['vonNeumann', 'harvard'], {placeHolder: 'Memory architecture'});
+      if (!architecture) return;
+      await initializeProject(root, target, architecture);
     }
     syncConfigs(root, loadProject(root));
     await vscode.window.showTextDocument(vscode.Uri.file(file));
@@ -395,8 +399,9 @@ function activate(context) {
     try { sync(document); } catch (error) { showError(error); }
   }));
   for (const [feature, initialize] of [
+    ['Development tools', () => { development = registerDevelopment(context, vscode, toolchain, output, showError); }],
     ['Editor', () => registerEditor(context, {toolchain, publishLive, invalidateBuild, onDidChangeLaunchProfile: profileChanges.event})],
-    ['Testing', () => registerTesting(context)],
+    ['Testing', () => registerTesting(context, development?.onDidInstall)],
     ['Memory view', () => { updateMemory = memoryView(context); }],
   ]) {
     try { initialize(); }

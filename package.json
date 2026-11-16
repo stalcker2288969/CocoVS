@@ -2,7 +2,7 @@
   "name": "cdm-project-tools",
   "displayName": "CocoVS — CdM Assembly",
   "description": "CdM-8 and CdM-16 assembly editing, CoCAS builds, debugging and RAM inspection for Coco-de-Mer processors",
-  "version": "0.8.17",
+  "version": "0.9.1",
   "publisher": "cdm-project-community",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -29,7 +29,7 @@
   "main": "./src/extension.js",
   "files": [
     "LICENSE", "CHANGELOG.md",
-    "src/*.js", "src/*.json", "runtime/*.py", "runtime/*.java",
+    "src/*.js", "src/*.json", "runtime/*.py", "runtime/*.java", "runtime/cdmbot-0.2.1-py3-none-any.whl",
     "media/*.css", "media/*.js", "media/*.png", "languages/*.json", "syntaxes/*.json", "schemas/*.json",
     "docs/*.md", "examples/!(build)/*.asm", "examples/!(build)/src/*.asm",
     "examples/!(build)/src/lib/*.asm", "examples/!(build)/lib/*.asm",
@@ -56,6 +56,15 @@
   },
   "contributes": {
     "commands": [
+      {"command": "cocovs.addPackageFromGit", "title": "Add Assembly Package from Git", "category": "CocoVS"},
+      {"command": "cocovs.installCdmbot", "title": "Install or Update cdmbot", "category": "CocoVS"},
+      {"command": "cocovs.analyze", "title": "Analyze Code with cdmbot", "category": "CocoVS"},
+      {"command": "cocovs.createCdmbotProject", "title": "Create cdmbot Project", "category": "CocoVS"},
+      {"command": "cocovs.addPackage", "title": "Add Assembly Package", "category": "CocoVS"},
+      {"command": "cocovs.getPackages", "title": "Restore Assembly Packages", "category": "CocoVS"},
+      {"command": "cocovs.updatePackages", "title": "Update Assembly Packages", "category": "CocoVS"},
+      {"command": "cocovs.removePackage", "title": "Remove Assembly Package", "category": "CocoVS"},
+      {"command": "cocovs.browsePackages", "title": "Browse Assembly Packages", "category": "CocoVS"},
       {
         "command": "cocovs.configureFile",
         "title": "Configure File Execution",
@@ -278,6 +287,8 @@
       }
     ],
     "jsonValidation": [
+      {"fileMatch": "cdm-package.json", "url": "./schemas/cdm-package.schema.json"},
+      {"fileMatch": "cdm-packages.json", "url": "./schemas/cdm-packages.schema.json"},
       {
         "fileMatch": "cdm-project.json",
         "url": "./schemas/cdm-project.schema.json"
@@ -290,6 +301,22 @@
     "configuration": {
       "title": "CocoVS",
       "properties": {
+        "cocovs.developmentBackend": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "native"
+          ],
+          "default": "auto",
+          "scope": "resource",
+          "description": "Use a compatible cdmbot development API for native builds when installed, or keep the original CoCAS build backend."
+        },
+        "cocovs.packageRegistry": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "Git repository URL, local catalog folder, or HTTPS JSON index for assembly packages. Empty uses the community GitHub catalog with an offline starter snapshot."
+        },
         "cocovs.liveDiagnostics": {
           "type": "boolean",
           "default": true,

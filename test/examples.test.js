@@ -8,7 +8,7 @@ const path = require('node:path');
 const {createJob} = require('../src/jobs');
 const {build} = require('../src/build');
 const {runProgram} = require('../src/runtime');
-const {createToolchain} = require('../src/tools');
+const {createToolchain, command} = require('../src/tools');
 const {findCdmbot, editCdmbot, jsonResult} = require('../src/cdmbot');
 
 test('documented examples build and halt with their stated registers, memory and stack', {
@@ -34,7 +34,8 @@ test('documented examples build and halt with their stated registers, memory and
       const destination = path.join(root, directory);
       await fs.cp(path.join(__dirname, '../examples', directory), destination, {recursive: true});
       const job = createJob({file: path.join(destination, entry), workspace: destination, architecture: 'vonNeumann'});
-      const result = await build(job, tools.cocas, {python: tools.python});
+      const result = await build(job, tools.cocas, {python: tools.python,
+        cdmbot: process.env.COCOVS_CDMBOT_DEVELOPMENT_PYTHON ? command(process.env.COCOVS_CDMBOT_DEVELOPMENT_PYTHON) : undefined});
       assert.equal(result.ok, true, result.message + '\n' + (result.details ?? ''));
       const state = await runProgram(job, result.artifacts, tools, {maxSteps: 1000});
       assert.equal(state.reason, 'halt');
