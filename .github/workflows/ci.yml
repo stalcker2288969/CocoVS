@@ -39,6 +39,10 @@ jobs:
 
           manifest = json.loads(Path('package.json').read_text(encoding='utf-8'))
           wheel = next(file for file in manifest['files'] if file.startswith('runtime/cdmbot-') and file.endswith('.whl'))
+          for file in [wheel, 'runtime/cocas_templates.py']:
+              if not Path(file).is_file():
+                  raise SystemExit(f'Missing bundled runtime file: {file}. Commit it before running CI.')
+              subprocess.check_call(['git', 'ls-files', '--error-unmatch', '--', file], stdout=subprocess.DEVNULL)
           subprocess.check_call([sys.executable, '-m', 'pip', 'install', wheel])
 
           import cdmbot

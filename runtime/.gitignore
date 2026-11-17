@@ -1,0 +1,3 @@
+# Runtime sources and bundled wheels are committed with the extension.
+__pycache__/
+*.pyc
