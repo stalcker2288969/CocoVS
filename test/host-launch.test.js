@@ -3,10 +3,29 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
+const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 const {EventEmitter} = require('node:events');
 const {createRequire} = require('node:module');
+const {downloadDirToExecutablePath} = require('@vscode/test-electron/out/util');
+
+test('the installed VS Code test dependency resolves current and legacy macOS executables', async t => {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cocovs-macos-host-')));
+  t.after(() => fs.rm(root, {recursive: true, force: true}));
+  for (const name of ['Code', 'Electron']) {
+    const download = path.join(root, name);
+    const contents = path.join(download, 'Visual Studio Code.app', 'Contents');
+    const executable = path.join(contents, 'MacOS', name);
+    await fs.mkdir(path.dirname(executable), {recursive: true});
+    await fs.writeFile(executable, 'test executable');
+    await fs.writeFile(path.join(contents, 'Info.plist'),
+      '<plist><dict><key>CFBundleExecutable</key><string>' + name + '</string></dict></plist>');
+    for (const platform of ['darwin', 'darwin-arm64']) {
+      assert.equal(downloadDirToExecutablePath(download, platform), executable);
+    }
+  }
+});
 
 test('the Linux Extension Host launcher supplies Chromium sandbox flags', async () => {
   const file = path.resolve(__dirname, '../test-host/run.js');
