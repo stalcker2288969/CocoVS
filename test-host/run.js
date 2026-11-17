@@ -23,7 +23,9 @@ async function main() {
         '--extensionDevelopmentPath=' + path.resolve(__dirname, '..'),
         '--extensionTestsPath=' + path.join(__dirname, 'editor.js'),
       ];
-      if (process.platform === 'linux') args.push('--disable-dev-shm-usage');
+      if (process.platform === 'linux') {
+        args.push('--disable-dev-shm-usage', '--no-sandbox', '--disable-gpu-sandbox');
+      }
       const env = {...process.env};
       delete env.ELECTRON_RUN_AS_NODE;
       const child = spawn(executable, args, {env, stdio: 'inherit', timeout: 120_000});
