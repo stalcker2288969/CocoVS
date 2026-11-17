@@ -9,7 +9,7 @@ const vm = require('node:vm');
 const {createRequire} = require('node:module');
 
 test('editor completes includes and imported symbols, colors references and navigates to definitions', async t => {
-  const root = await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-editor-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-editor-')));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   await fs.mkdir(path.join(root, 'lib'));
   const main = path.join(root, 'main.asm');

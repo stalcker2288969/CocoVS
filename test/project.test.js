@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {resolveSources,syncConfigs,loadProject,readJsonc}=require('../src/project');
-function fixture(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'cdm-test-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));return root;}
+function fixture(t){const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'cdm-test-')));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));return root;}
 function put(root,file,text){const f=path.join(root,file);fs.mkdirSync(path.dirname(f),{recursive:true});fs.writeFileSync(f,text);}
 const conf={entry:'main.asm',target:'cdm8',architecture:'vonNeumann',environment:'external',extraSources:[]};
 test('transitive dependencies and deduplication (entry first)',t=>{

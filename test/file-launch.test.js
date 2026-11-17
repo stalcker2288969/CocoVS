@@ -19,7 +19,7 @@ test('entry lenses prefer run targets and ignore macros, comments, strings, exte
 });
 
 test('standalone launch remembers each file, supports cancellation and reconfiguration, and debugs the requested URI', async t => {
-  const root = await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-file-launch-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-file-launch-')));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   const uri = fsPath => ({fsPath, scheme: 'file', toString: () => fsPath});
   const makeDoc = file => ({uri: uri(file), fileName: file, languageId: 'cocovs-assembly'});

@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 async function main() {
-  const root = await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-host-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-host-')));
   try {
     const userData = path.join(root, 'user-data');
     await fs.mkdir(path.join(userData, 'User'), {recursive: true});

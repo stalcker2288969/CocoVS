@@ -32,11 +32,12 @@ test('templates index qualified fields, sizes and source ranges', () => {
 test('CoCAS builds, diagnoses and executes template allocation on both CPUs', {
   skip: process.env.COCOVS_INTEGRATION !== '1',
 }, async t => {
-  const root = await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-tplates-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-tplates-')));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   const toolchain = createToolchain(path.join(root, 'tools'), () => ({pythonPath: process.env.COCOVS_PYTHON,
     cocasPath: process.env.COCOVS_COCAS, javaPath: process.env.COCOVS_JAVA}));
   const tools = await toolchain.inspect();
+  assert.ok(tools.python && tools.cocas, 'Installed Python and CoCAS are required');
   tools.jar = await toolchain.findJar(tools.python, tools.cocas);
   for (const target of ['cdm8', 'cdm16']) {
     const wide = target === 'cdm16';
@@ -46,8 +47,8 @@ test('CoCAS builds, diagnoses and executes template allocation on both CPUs', {
       (wide ? 'asect 0x9000\n' : 'asect 0xA0\n') + 'object: ds Person._\nend\n';
     const file = path.join(root, 'person.' + target + '.asm');
     await fs.writeFile(file, source);
-    const python = command(process.env.COCOVS_PYTHON);
-    const cocas = command(process.env.COCOVS_COCAS);
+    const python = tools.python;
+    const cocas = tools.cocas;
     const launchers = [cocas, command(python.file, ['-c', 'from cocas.main import main; raise SystemExit(main())'])];
     if (process.env.COCOVS_PIP_COCAS) launchers.push(command(process.env.COCOVS_PIP_COCAS));
     for (const launcher of launchers) {

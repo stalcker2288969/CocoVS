@@ -14,7 +14,7 @@ const {findCdmbot, editCdmbot, jsonResult} = require('../src/cdmbot');
 test('documented examples build and halt with their stated registers, memory and stack', {
   skip: process.env.COCOVS_INTEGRATION !== '1',
 }, async t => {
-  const root = await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-examples-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-examples-')));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   const toolchain = createToolchain(path.join(root, 'tools'), () => ({
     pythonPath: process.env.COCOVS_PYTHON, cocasPath: process.env.COCOVS_COCAS,
@@ -56,7 +56,7 @@ test('documented examples build and halt with their stated registers, memory and
 test('example cdmbot projects discover and pass all cases, allow selection, and catch an incorrect expectation', {
   skip: process.env.COCOVS_INTEGRATION !== '1' || process.env.COCOVS_SKIP_CDMBOT === '1',
 }, async t => {
-  const root = await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-example-tests-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-example-tests-')));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   const python = await findCdmbot(process.env.COCOVS_PYTHON);
   assert.ok(python, 'An installed cdmbot environment is required');

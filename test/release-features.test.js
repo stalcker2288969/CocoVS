@@ -12,7 +12,7 @@ const {command} = require('../src/tools');
 const snippets = require('../languages/snippets.json');
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-features-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-features-')));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   return root;
 }

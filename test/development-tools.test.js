@@ -16,7 +16,7 @@ const {initializeProject} = require('../src/project-template');
 const {exposeCdmbot} = require('../src/cdmbot-launcher');
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-development-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-development-')));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   return root;
 }

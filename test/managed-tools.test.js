@@ -10,7 +10,7 @@ const {checksumFor, downloadArchive, platformAssets} = require('../src/managed-t
 const {command, createToolchain, findDebug16Python, processResult} = require('../src/tools');
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-runtimes-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-runtimes-')));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   return root;
 }
@@ -161,7 +161,7 @@ test('CoCAS discovers Python embedded after a Windows pip executable stub', asyn
     const stub = Buffer.alloc(128 * 1024);
     stub.write('MZ');
     stub.write('#!\0misleading embedded string', 90000);
-    await fs.writeFile(launcher, Buffer.concat([stub, Buffer.from('#!' + interpreter + '\nPK\x03\x04archive')]));
+    await fs.writeFile(launcher, Buffer.concat([stub, Buffer.from('#!' + interpreter + '\nPK\x03\x04archive')]), {mode: 0o755});
     assert.deepEqual(await findDebug16Python(command(launcher), [], run), command(python));
   }
 });

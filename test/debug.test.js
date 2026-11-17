@@ -18,7 +18,7 @@ const env = process.env;
 test('CdM-8 DAP handles real CoCAS breakpoints, source steps, RAM and subroutine frames', {
   skip: env.COCOVS_INTEGRATION !== '1',
 }, async t => {
-  const root = await fs.mkdtemp(path.join(env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-debug-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-debug-')));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   await fs.mkdir(path.join(root, 'lib'));
   await fs.writeFile(path.join(root, 'cdm-project.json'), JSON.stringify({entry: 'main.asm', target: 'cdm8'}));
@@ -110,7 +110,7 @@ test('CdM-8 DAP handles real CoCAS breakpoints, source steps, RAM and subroutine
 test('CdM-8 debugger follows unsigned branches after CMP', {
   skip: env.COCOVS_INTEGRATION !== '1',
 }, async t => {
-  const root = await fs.mkdtemp(path.join(env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-cmp-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-cmp-')));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   const file = path.join(root, 'compare.cdm8');
   await fs.writeFile(file, [

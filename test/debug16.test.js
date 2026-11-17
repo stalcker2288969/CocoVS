@@ -21,7 +21,7 @@ for (const architecture of ['vonNeumann', 'harvard']) {
 }
 
 async function exercise(t, architecture) {
-  const root = await fs.mkdtemp(path.join(env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-debug16-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-debug16-')));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   const toolchain = createToolchain(path.join(root, 'tools'), () => ({
     pythonPath: env.COCOVS_PYTHON, cocasPath: env.COCOVS_COCAS, javaPath: env.COCOVS_JAVA, cocoemuJar: env.COCOVS_JAR,

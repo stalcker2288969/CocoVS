@@ -16,7 +16,7 @@ const enabled = env.COCOVS_INTEGRATION === '1';
 const skip = enabled ? false : 'Set COCOVS_INTEGRATION=1 to exercise installed tools.';
 
 test('installed CoCAS, Python and Cocoemu compile and run CdM programs', {skip}, async t => {
-  const root = await fs.mkdtemp(path.join(env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-integration-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-integration-')));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   const toolchain = createToolchain(path.join(root, 'tools'), () => ({
     pythonPath: env.COCOVS_PYTHON, cocasPath: env.COCOVS_COCAS, javaPath: env.COCOVS_JAVA, cocoemuJar: env.COCOVS_JAR,

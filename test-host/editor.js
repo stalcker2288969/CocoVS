@@ -9,7 +9,7 @@ const vscode = require('vscode');
 const fileKey = file => process.platform === 'win32' ? path.resolve(file).toLowerCase() : path.resolve(file);
 
 async function run() {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cocovs-vscode-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cocovs-vscode-')));
   try {
     const extension = vscode.extensions.getExtension('cdm-project-community.cdm-project-tools');
     assert.ok(extension, 'CocoVS must be installed in the Extension Host');

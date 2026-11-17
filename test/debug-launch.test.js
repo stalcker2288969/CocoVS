@@ -12,7 +12,7 @@ const {command} = require('../src/tools');
 test('the native VS Code launch provider builds an active CdM-8 file with no launch.json', {
   skip: process.env.COCOVS_INTEGRATION !== '1',
 }, async t => {
-  const root = await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-launch-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-launch-')));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   await fs.mkdir(path.join(root, 'sorting'));
   const source = path.join(root, 'sorting', 'sample.asm');

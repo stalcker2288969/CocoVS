@@ -17,7 +17,7 @@ test('cdmbot YAML creation, discovery, project checks and selected cases use the
   skip: process.env.COCOVS_INTEGRATION !== '1' || process.env.COCOVS_SKIP_CDMBOT === '1',
 }, async t => {
   const temp = process.env.COCOVS_TEST_TEMP ?? os.tmpdir();
-  const root = await fs.mkdtemp(path.join(temp, 'cocovs-cdmbot-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(temp, 'cocovs-cdmbot-')));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   const interpreter = await findCdmbot(process.env.COCOVS_PYTHON);
   assert.ok(interpreter);

@@ -27,7 +27,7 @@ const expected = [
 ].join('\r\n');
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-format-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(process.env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-format-')));
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   return root;
 }
