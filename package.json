@@ -2,7 +2,7 @@
   "name": "cdm-project-tools",
   "displayName": "CocoVS — CdM Assembly",
   "description": "CdM-8 and CdM-16 assembly editing, CoCAS builds, debugging and RAM inspection for Coco-de-Mer processors",
-  "version": "0.9.1",
+  "version": "0.9.5",
   "publisher": "cdm-project-community",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -14,7 +14,18 @@
     "url": "https://github.com/stalcker2288969/CocoVS/issues"
   },
   "homepage": "https://github.com/stalcker2288969/CocoVS#readme",
-  "keywords": ["cdm", "assembly", "assembler", "coco-de-mer", "cocas", "cdm8", "cdm16", "cdm-8", "cdm-16", "cdmbot"],
+  "keywords": [
+    "cdm",
+    "assembly",
+    "assembler",
+    "coco-de-mer",
+    "cocas",
+    "cdm8",
+    "cdm16",
+    "cdm-8",
+    "cdm-16",
+    "cdmbot"
+  ],
   "galleryBanner": {
     "color": "#101b33",
     "theme": "dark"
@@ -28,12 +39,28 @@
   ],
   "main": "./src/extension.js",
   "files": [
-    "LICENSE", "CHANGELOG.md",
-    "src/*.js", "src/*.json", "runtime/*.py", "runtime/*.java", "runtime/cdmbot-0.2.1-py3-none-any.whl",
-    "media/*.css", "media/*.js", "media/*.png", "languages/*.json", "syntaxes/*.json", "schemas/*.json",
-    "docs/*.md", "examples/!(build)/*.asm", "examples/!(build)/src/*.asm",
-    "examples/!(build)/src/lib/*.asm", "examples/!(build)/lib/*.asm",
-    "examples/**/cdm-project.json", "examples/**/*.yaml", "examples/**/*.md", "THIRD_PARTY_NOTICES.txt"
+    "LICENSE",
+    "CHANGELOG.md",
+    "src/*.js",
+    "src/*.json",
+    "runtime/*.py",
+    "runtime/*.java",
+    "runtime/cdmbot-0.2.3-py3-none-any.whl",
+    "media/*.css",
+    "media/*.js",
+    "media/*.png",
+    "languages/*.json",
+    "syntaxes/*.json",
+    "schemas/*.json",
+    "docs/*.md",
+    "examples/!(build)/*.asm",
+    "examples/!(build)/src/*.asm",
+    "examples/!(build)/src/lib/*.asm",
+    "examples/!(build)/lib/*.asm",
+    "examples/**/cdm-project.json",
+    "examples/**/*.yaml",
+    "examples/**/*.md",
+    "THIRD_PARTY_NOTICES.txt"
   ],
   "activationEvents": [
     "onStartupFinished",
@@ -56,15 +83,56 @@
   },
   "contributes": {
     "commands": [
-      {"command": "cocovs.addPackageFromGit", "title": "Add Assembly Package from Git", "category": "CocoVS"},
-      {"command": "cocovs.installCdmbot", "title": "Install or Update cdmbot", "category": "CocoVS"},
-      {"command": "cocovs.analyze", "title": "Analyze Code with cdmbot", "category": "CocoVS"},
-      {"command": "cocovs.createCdmbotProject", "title": "Create cdmbot Project", "category": "CocoVS"},
-      {"command": "cocovs.addPackage", "title": "Add Assembly Package", "category": "CocoVS"},
-      {"command": "cocovs.getPackages", "title": "Restore Assembly Packages", "category": "CocoVS"},
-      {"command": "cocovs.updatePackages", "title": "Update Assembly Packages", "category": "CocoVS"},
-      {"command": "cocovs.removePackage", "title": "Remove Assembly Package", "category": "CocoVS"},
-      {"command": "cocovs.browsePackages", "title": "Browse Assembly Packages", "category": "CocoVS"},
+      {
+        "command": "cocovs.createProject",
+        "title": "Create or Initialize Project",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cocovs.addPackageFromGit",
+        "title": "Add Assembly Package from Git",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cocovs.installCdmbot",
+        "title": "Install or Update cdmbot",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cocovs.analyze",
+        "title": "Analyze Code with cdmbot",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cocovs.createCdmbotProject",
+        "title": "Create cdmbot Project",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cocovs.addPackage",
+        "title": "Add Assembly Package",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cocovs.getPackages",
+        "title": "Restore Assembly Packages",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cocovs.updatePackages",
+        "title": "Update Assembly Packages",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cocovs.removePackage",
+        "title": "Remove Assembly Package",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cocovs.browsePackages",
+        "title": "Browse Assembly Packages",
+        "category": "CocoVS"
+      },
       {
         "command": "cocovs.configureFile",
         "title": "Configure File Execution",
@@ -142,12 +210,33 @@
     ],
     "menus": {
       "commandPalette": [
-        {"command": "cocovs.showSuggestions", "when": "editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/"}
+        {
+          "command": "cocovs.showSuggestions",
+          "when": "editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/"
+        },
+        {
+          "command": "cdmProject.init",
+          "when": "false"
+        },
+        {
+          "command": "cocovs.createCdmbotProject",
+          "when": "false"
+        }
       ],
       "view/title": [
-        {"command": "cocovs.createTestSuite", "when": "view == workbench.view.testing and isWorkspaceTrusted", "group": "navigation"}
+        {
+          "command": "cocovs.createTestSuite",
+          "when": "view == workbench.view.testing and isWorkspaceTrusted",
+          "group": "navigation"
+        }
       ],
-      "debug/toolBar": [{"command": "cocovs.openMemory", "when": "inDebugMode && debugType == cocovs-debug", "group": "navigation"}],
+      "debug/toolBar": [
+        {
+          "command": "cocovs.openMemory",
+          "when": "inDebugMode && debugType == cocovs-debug",
+          "group": "navigation"
+        }
+      ],
       "editor/title": [
         {
           "command": "cocovs.run",
@@ -183,50 +272,99 @@
       }
     ],
     "semanticTokenTypes": [
-      {"id": "cocovsMnemonic", "superType": "function", "description": "Processor instruction or standard macro"},
-      {"id": "cocovsUserMacro", "description": "User-defined assembly macro"},
-      {"id": "cocovsLabel", "description": "Assembly label declaration or reference"},
-      {"id": "cocovsControlFlow", "description": "Assembly jump, call or return"},
-      {"id": "cocovsDirective", "superType": "keyword", "description": "Assembler directive or startup macro"}
+      {
+        "id": "cocovsMnemonic",
+        "superType": "function",
+        "description": "Processor instruction or standard macro"
+      },
+      {
+        "id": "cocovsUserMacro",
+        "description": "User-defined assembly macro"
+      },
+      {
+        "id": "cocovsLabel",
+        "description": "Assembly label declaration or reference"
+      },
+      {
+        "id": "cocovsControlFlow",
+        "description": "Assembly jump, call or return"
+      },
+      {
+        "id": "cocovsDirective",
+        "superType": "keyword",
+        "description": "Assembler directive or startup macro"
+      }
     ],
     "semanticTokenScopes": [
-      {"scopes": {
-        "cocovsMnemonic": ["support.function"],
-        "cocovsUserMacro": ["keyword.control.macro"],
-        "cocovsLabel": ["entity.name.type.label"],
-        "cocovsControlFlow": ["support.constant.property-value.control-flow"],
-        "cocovsDirective": ["keyword.control.cocovs"]
-      }}
+      {
+        "scopes": {
+          "cocovsMnemonic": [
+            "support.function"
+          ],
+          "cocovsUserMacro": [
+            "keyword.control.macro"
+          ],
+          "cocovsLabel": [
+            "entity.name.type.label"
+          ],
+          "cocovsControlFlow": [
+            "support.constant.property-value.control-flow"
+          ],
+          "cocovsDirective": [
+            "keyword.control.cocovs"
+          ]
+        }
+      }
     ],
     "configurationDefaults": {
       "[cocovs-assembly]": {
         "editor.minimap.showRegionSectionHeaders": false,
         "editor.semanticHighlighting.enabled": true,
-        "editor.quickSuggestions": {"other": "on", "comments": "on", "strings": "on"},
+        "editor.quickSuggestions": {
+          "other": "on",
+          "comments": "on",
+          "strings": "on"
+        },
         "editor.suggestOnTriggerCharacters": true,
         "editor.wordBasedSuggestions": "off"
       },
       "[cdm8-assembly]": {
         "editor.minimap.showRegionSectionHeaders": false,
-        "editor.quickSuggestions": {"other": "on", "comments": "on", "strings": "on"},
+        "editor.quickSuggestions": {
+          "other": "on",
+          "comments": "on",
+          "strings": "on"
+        },
         "editor.suggestOnTriggerCharacters": true,
         "editor.wordBasedSuggestions": "off"
       },
       "[cdm8e-assembly]": {
         "editor.minimap.showRegionSectionHeaders": false,
-        "editor.quickSuggestions": {"other": "on", "comments": "on", "strings": "on"},
+        "editor.quickSuggestions": {
+          "other": "on",
+          "comments": "on",
+          "strings": "on"
+        },
         "editor.suggestOnTriggerCharacters": true,
         "editor.wordBasedSuggestions": "off"
       },
       "[cdm16-assembly]": {
         "editor.minimap.showRegionSectionHeaders": false,
-        "editor.quickSuggestions": {"other": "on", "comments": "on", "strings": "on"},
+        "editor.quickSuggestions": {
+          "other": "on",
+          "comments": "on",
+          "strings": "on"
+        },
         "editor.suggestOnTriggerCharacters": true,
         "editor.wordBasedSuggestions": "off"
       },
       "[cdm16e-assembly]": {
         "editor.minimap.showRegionSectionHeaders": false,
-        "editor.quickSuggestions": {"other": "on", "comments": "on", "strings": "on"},
+        "editor.quickSuggestions": {
+          "other": "on",
+          "comments": "on",
+          "strings": "on"
+        },
         "editor.suggestOnTriggerCharacters": true,
         "editor.wordBasedSuggestions": "off"
       }
@@ -235,22 +373,63 @@
       {
         "type": "cocovs-debug",
         "label": "CocoVS CdM-8 / CdM-16",
-        "languages": ["cocovs-assembly", "cdm8-assembly", "cdm16-assembly"],
-        "initialConfigurations": [{"name": "CocoVS: Debug", "type": "cocovs-debug", "request": "launch"}],
+        "languages": [
+          "cocovs-assembly",
+          "cdm8-assembly",
+          "cdm16-assembly"
+        ],
+        "initialConfigurations": [
+          {
+            "name": "CocoVS: Debug",
+            "type": "cocovs-debug",
+            "request": "launch"
+          }
+        ],
         "configurationAttributes": {
           "launch": {
-
             "properties": {
-              "root": {"type": "string", "description": "Project directory."},
-              "target": {"type": "string", "enum": ["cdm8", "cdm16"]},
-              "architecture": {"type": "string", "enum": ["harvard", "vonNeumann"]},
+              "root": {
+                "type": "string",
+                "description": "Project directory."
+              },
+              "target": {
+                "type": "string",
+                "enum": [
+                  "cdm8",
+                  "cdm16"
+                ]
+              },
+              "architecture": {
+                "type": "string",
+                "enum": [
+                  "harvard",
+                  "vonNeumann"
+                ]
+              },
               "artifacts": {
                 "type": "object",
-                "required": ["image", "debug"],
-                "properties": {"image": {"type": "string"}, "debug": {"type": "string"}}
+                "required": [
+                  "image",
+                  "debug"
+                ],
+                "properties": {
+                  "image": {
+                    "type": "string"
+                  },
+                  "debug": {
+                    "type": "string"
+                  }
+                }
               },
-              "stopOnEntry": {"type": "boolean", "default": true},
-              "maxSteps": {"type": "integer", "minimum": 1, "maximum": 10000000}
+              "stopOnEntry": {
+                "type": "boolean",
+                "default": true
+              },
+              "maxSteps": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000000
+              }
             }
           }
         }
@@ -262,12 +441,53 @@
       }
     ],
     "keybindings": [
-      {"key":"ctrl+space","mac":"cmd+shift+.","command":"editor.action.triggerSuggest","when":"editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/"},
-      {"key":"ctrl+shift+space","command":"editor.action.triggerSuggest","when":"isMac && editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/"},
-      {"key":"ctrl+alt+w","command":"editor.action.insertSnippet","when":"editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/","args":{"langId":"cocovs-assembly","name":"While"}},
-      {"key":"ctrl+alt+f","command":"editor.action.insertSnippet","when":"editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/","args":{"langId":"cocovs-assembly","name":"For"}},
-      {"key":"ctrl+alt+i","command":"editor.action.insertSnippet","when":"editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/","args":{"langId":"cocovs-assembly","name":"If else"}},
-      {"key":"ctrl+alt+d","command":"editor.action.insertSnippet","when":"editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/","args":{"langId":"cocovs-assembly","name":"Description"}}
+      {
+        "key": "ctrl+space",
+        "mac": "cmd+shift+.",
+        "command": "editor.action.triggerSuggest",
+        "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/"
+      },
+      {
+        "key": "ctrl+shift+space",
+        "command": "editor.action.triggerSuggest",
+        "when": "isMac && editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/"
+      },
+      {
+        "key": "ctrl+alt+w",
+        "command": "editor.action.insertSnippet",
+        "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/",
+        "args": {
+          "langId": "cocovs-assembly",
+          "name": "While"
+        }
+      },
+      {
+        "key": "ctrl+alt+f",
+        "command": "editor.action.insertSnippet",
+        "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/",
+        "args": {
+          "langId": "cocovs-assembly",
+          "name": "For"
+        }
+      },
+      {
+        "key": "ctrl+alt+i",
+        "command": "editor.action.insertSnippet",
+        "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/",
+        "args": {
+          "langId": "cocovs-assembly",
+          "name": "If else"
+        }
+      },
+      {
+        "key": "ctrl+alt+d",
+        "command": "editor.action.insertSnippet",
+        "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^(cocovs|cdm8|cdm8e|cdm16|cdm16e)-assembly$/",
+        "args": {
+          "langId": "cocovs-assembly",
+          "name": "Description"
+        }
+      }
     ],
     "snippets": [
       {
@@ -287,8 +507,14 @@
       }
     ],
     "jsonValidation": [
-      {"fileMatch": "cdm-package.json", "url": "./schemas/cdm-package.schema.json"},
-      {"fileMatch": "cdm-packages.json", "url": "./schemas/cdm-packages.schema.json"},
+      {
+        "fileMatch": "cdm-package.json",
+        "url": "./schemas/cdm-package.schema.json"
+      },
+      {
+        "fileMatch": "cdm-packages.json",
+        "url": "./schemas/cdm-packages.schema.json"
+      },
       {
         "fileMatch": "cdm-project.json",
         "url": "./schemas/cdm-project.schema.json"

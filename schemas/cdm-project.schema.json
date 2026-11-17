@@ -70,6 +70,16 @@
     },
     "runner": {
       "$ref": "#/definitions/command"
+    },
+    "languageVersion": {
+      "enum": [
+        "1.0"
+      ],
+      "default": "1.0",
+      "description": "CocoVS/cdmbot assembly compatibility profile. Profile 1.0 uses CoCAS 0.2.3. Processor selection is independent."
+    },
+    "dependencies": {
+      "$ref": "./cdm-packages.schema.json#/properties/dependencies"
     }
   },
   "if": {

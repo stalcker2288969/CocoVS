@@ -138,7 +138,7 @@ async function build(job, cocas, options = {}, run = processResult) {
         '--output', stage, '--name', path.basename(temporary.image, '.img'), '--json']};
     }
     if (!invocation.tool) throw new Error('Cannot find cocas. Run CocoVS: Set Up Toolchain.');
-    if (job.config.target === 'cdm16' && !options.cdmbot) {
+    if (native && !options.cdmbot && (job.config.target === 'cdm16' || textSources.some(source => /^\s*tplate\b/im.test(source.text)))) {
       const python = options.debugPython ?? await findDebug16Python(cocas,
         [options.python, command(process.platform === 'win32' ? 'python.exe' : 'python3')], run);
       if (python) {

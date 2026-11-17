@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.9.5
+
+- Store application dependencies in cdm-project.json and migrate legacy dependency manifests after a successful restore.
+- Check languageVersion compatibility for projects and direct or transitive packages, including cached and native builds.
+- Offer one Create or Initialize Project command with shared CLI templates for applications and libraries in new or existing folders.
+- Bundle cdmbot 0.2.3 with unified manifests, transactional migration and compatibility profiles.
+
+## 0.9.4
+
+- Discover the Python interpreter embedded in Windows pip CoCAS launchers, including paths with spaces.
+- Apply template compatibility fixes to live diagnostics when CoCAS is installed outside the managed environment.
+- Verify template errors appear and clear for unsaved buffers in the VS Code Extension Host.
+
+## 0.9.3
+
+- Complete sizes (`Name._`) and qualified fields for any declared template, with hover documentation and definition navigation.
+- Resolve CoCAS template constants in negative expressions and storage reservations during builds and syntax checks.
+- Bundle cdmbot 0.2.2 with the same template compatibility correction for CLI builds and tests.
+
+## 0.9.2
+
+- Complete installed package names and source paths inside `@include`, including nested standalone files.
+- Open package includes through Ctrl+Click and F12 using the same locked paths as the build.
+- Show imported macro signatures, argument documentation, results and changed registers in completion and hover.
+- Refresh library symbols and semantic highlighting when downloaded packages or their lock files change.
+
 ## 0.9.1
 
 - Bundle cdmbot 0.2.1 and enable its terminal command in the user PATH during installation.

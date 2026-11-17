@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const vscode = require('vscode');
-const {ASSEMBLY, MANIFEST, confined, inferTarget, loadProject, locateProject, resolveSources, sourceDirective} = require('./project');
+const {ASSEMBLY, MANIFEST, confined, inferTarget, loadProject, locateProject, resolveSources, sourceDirective, includePath} = require('./project');
 const {branchTargets, colorTokens, completionContext, indexSymbols, operationAt, sourceLine, symbolAt} = require('./symbols');
 const {externalInsertionLine, includeCandidates, includeContext} = require('./editor-support');
 const instructionSets = require('./instructions.json');
@@ -99,7 +99,7 @@ function registerEditor(context, liveDiagnostics) {
   }
 
   function range(symbol) {
-    return new vscode.Range(symbol.line, symbol.column, symbol.line, symbol.column + symbol.name.length);
+    return new vscode.Range(symbol.line, symbol.column, symbol.line, symbol.column + (symbol.definitionLength ?? symbol.name.length));
   }
 
   function formatName(symbol) {
@@ -110,6 +110,9 @@ function registerEditor(context, liveDiagnostics) {
     const name = symbolAt(document.lineAt(position.line).text, position.character);
     if (!name) return [];
     const {symbols} = await available(document, token);
+    const declaration = symbols.filter(symbol => !symbol.imported && symbol.line === position.line &&
+      position.character >= symbol.column && position.character < symbol.column + (symbol.definitionLength ?? symbol.name.length));
+    if (declaration.length) return declaration;
     const matches = symbols.filter(symbol => symbol.name === name);
     const local = matches.filter(symbol => !symbol.imported && !symbol.external);
     if (local.length) return local;
@@ -182,16 +185,18 @@ function registerEditor(context, liveDiagnostics) {
 
   async function includeItems(document, position, context, root) {
     if (document.uri.scheme !== 'file') return [];
-    const items = await includeCandidates(root, document.fileName, context.directory);
+    const prefix = document.lineAt(position.line).text.slice(context.start, position.character);
+    const items = await includeCandidates(root, document.fileName, context.directory, prefix);
     if (context.directory && items.some(item => !item.folder && ASSEMBLY.test(item.name))) {
       items.unshift({name: '*', folder: false});
     }
-    return items.flatMap(({name, folder}) => {
+    return items.flatMap(({name, folder, detail}) => {
       const quote = context.quote || (name.includes('"') ? "'" : '"');
       if (name.includes(quote)) return [];
       const item = new vscode.CompletionItem(name + (folder ? '/' : ''),
         folder ? vscode.CompletionItemKind.Folder : vscode.CompletionItemKind.File);
       item.range = new vscode.Range(position.line, context.start, position.line, context.end);
+      if (detail) item.detail = detail;
       if (name === '*') item.detail = 'All assembly sources in this folder';
       const opening = !context.quote ? quote : '';
       const closing = !folder && !context.closed ? quote : '';
@@ -248,7 +253,7 @@ function registerEditor(context, liveDiagnostics) {
 
   function symbolItems(document, position, symbols, info, kind) {
     const localNames = new Set(symbols.filter(symbol => !symbol.imported).map(symbol => symbol.name));
-    const candidates = symbols.filter(symbol => kind === 'operand' ? symbol.kind === 'label' : symbol.kind === 'macro');
+    const candidates = symbols.filter(symbol => kind === 'operand' ? ['label', 'field', 'constant'].includes(symbol.kind) : symbol.kind === 'macro');
     const distinct = new Map();
     for (const symbol of candidates) {
       const key = formatName(symbol);
@@ -258,10 +263,11 @@ function registerEditor(context, liveDiagnostics) {
     return [...distinct.values()].map(symbol => {
       const item = new vscode.CompletionItem(symbol.name,
         symbol.kind === 'macro' ? vscode.CompletionItemKind.Function : vscode.CompletionItemKind.Reference);
-      item.detail = formatName(symbol) + (symbol.imported ? ' · ' + symbol.relative : '');
-      item.documentation = symbol.documentation;
+      const details = symbol.kind === 'macro' && signature(symbol);
+      item.detail = (details ? details.label : formatName(symbol)) + (symbol.imported ? ' · ' + symbol.relative : '');
+      item.documentation = details ? signatureMarkdown(symbol, details) : symbol.documentation;
       item.sortText = (symbol.imported ? '1' : '0') + symbol.name;
-      if (kind === 'operand' && symbol.imported && info.target !== 'custom' && !localNames.has(symbol.name)) {
+      if (kind === 'operand' && symbol.kind === 'label' && symbol.imported && info.target !== 'custom' && !localNames.has(symbol.name)) {
         const edit = externalEdit(document, symbol.name, position);
         if (edit) item.additionalTextEdits = [edit];
       }
@@ -272,8 +278,8 @@ function registerEditor(context, liveDiagnostics) {
   function signatureMarkdown(symbol, details) {
     const markdown = new vscode.MarkdownString();
     if (details.summary) markdown.appendText(details.summary);
-    if (symbol.kind !== 'macro' && details.params.length) {
-      markdown.appendMarkdown('\n\n**Inputs**\n\n');
+    if (details.params.length) {
+      markdown.appendMarkdown(symbol.kind === 'macro' ? '\n\n**Arguments**\n\n' : '\n\n**Inputs**\n\n');
       for (const parameter of details.params) {
         markdown.appendText(parameter.name + (parameter.description ? ' - ' + parameter.description : ''));
         markdown.appendMarkdown('  \n');
@@ -342,9 +348,33 @@ function registerEditor(context, liveDiagnostics) {
   }
 
   function refresh(document) {
-    if (!SELECTOR.includes(document.languageId) && path.basename(document.fileName) !== MANIFEST) return;
+    if (!SELECTOR.includes(document.languageId) && ![MANIFEST, 'cdm-packages.json', 'cdm-packages.lock.json'].includes(path.basename(document.fileName))) return;
     refreshColors.fire();
     scheduleHints();
+  }
+
+  function includeLocation(document, line) {
+    if (document.uri.scheme !== 'file') return undefined;
+    const source = document.lineAt(line).text;
+    const directive = sourceDirective(source);
+    if (!directive || directive.folder) return undefined;
+    const column = source.indexOf(directive.name, source.indexOf('@') + '@include'.length);
+    if (column < 0) return undefined;
+    try {
+      const {root} = projectInfo(document);
+      const file = includePath(root, document.fileName, directive.path);
+      confined(fs.realpathSync(root), fs.realpathSync(file));
+      if (!fs.statSync(file).isFile()) return undefined;
+      return {uri: vscode.Uri.file(file), range: new vscode.Range(line, column, line, column + directive.name.length)};
+    } catch { return undefined; }
+  }
+
+  if (vscode.workspace.createFileSystemWatcher) {
+    const changed = () => { refreshColors.fire(); scheduleHints(); };
+    for (const pattern of ['**/.cdm/packages/**/*', '**/cdm-packages.json', '**/cdm-packages.lock.json']) {
+      const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+      context.subscriptions.push(watcher, watcher.onDidCreate(changed), watcher.onDidChange(changed), watcher.onDidDelete(changed));
+    }
   }
 
   if (liveDiagnostics?.onDidChangeLaunchProfile) {
@@ -401,13 +431,6 @@ function registerEditor(context, liveDiagnostics) {
         const details = signature(symbol);
         markdown.appendCodeblock(symbol.kind === 'macro' || details.params.length ? details.label : formatName(symbol));
         markdown.appendMarkdown(signatureMarkdown(symbol, details).value);
-        if (symbol.kind === 'macro' && details.params.some(parameter => parameter.description)) {
-          markdown.appendMarkdown('\n\n**Arguments**\n\n');
-          for (const parameter of details.params) {
-            markdown.appendText(parameter.name + (parameter.description ? ' - ' + parameter.description : ''));
-            markdown.appendMarkdown('  \n');
-          }
-        }
         return markdown;
       }));
     }}),
@@ -443,6 +466,10 @@ function registerEditor(context, liveDiagnostics) {
       provideRenameEdits: (document, position, newName, token) => rename(document, position, newName, token),
     }),
     vscode.languages.registerDefinitionProvider(SELECTOR, {async provideDefinition(document, position, token) {
+      const include = includeLocation(document, position.line);
+      if (include && position.character >= include.range.start.character && position.character <= include.range.end.character) {
+        return [new vscode.Location(include.uri, new vscode.Range(0, 0, 0, 0))];
+      }
       return (await lookup(document, position, token)).map(symbol => new vscode.Location(symbol.uri, range(symbol)));
     }}),
     vscode.languages.registerDocumentSymbolProvider(SELECTOR, {provideDocumentSymbols(document) {
@@ -465,17 +492,12 @@ function registerEditor(context, liveDiagnostics) {
         const macros = symbolItems(document, position, symbols, info, 'operation');
         return [...macros, ...[...new Set([...DIRECTIVES, ...info.instructions])].map(keyword)];
       }
-      // Most instructions can be completed without loading all imported files.
       const {name} = completion;
-      let linked;
-      if (!info.instructions.includes(name.toLowerCase()) && !DIRECTIVES.includes(name.toLowerCase())) {
-        linked = await available(document, token, info);
-      }
+      const linked = await available(document, token, info);
       const kinds = operandKinds(completion, info.target, info.instructions,
-        (linked?.symbols ?? getSymbols(document)).filter(symbol => symbol.kind === 'macro' && symbol.name === name));
+        linked.symbols.filter(symbol => symbol.kind === 'macro' && symbol.name === name));
       const items = [];
       if (kinds.includes('l')) {
-        linked ??= await available(document, token, info);
         items.push(...symbolItems(document, position, linked.symbols, info, 'operand'));
       }
       if (!completion.expression) {
@@ -518,20 +540,13 @@ function registerEditor(context, liveDiagnostics) {
     }}, {providedCodeActionKinds: [vscode.CodeActionKind.QuickFix]}),
     vscode.languages.registerDocumentLinkProvider(SELECTOR, {provideDocumentLinks(document) {
       if (document.uri.scheme !== 'file') return [];
-      const {root} = projectInfo(document);
-      const directory = path.dirname(document.fileName);
       const links = [];
       for (let line = 0; line < document.lineCount; line++) {
-        const source = document.lineAt(line).text;
-        const directive = sourceDirective(source);
-        if (!directive || directive.folder) continue;
-        const {name} = directive;
-        const column = source.indexOf(name, source.indexOf('@') + '@include'.length);
-        try {
-          const file = confined(root, path.resolve(directory, directive.path));
-          confined(fs.realpathSync(root), fs.realpathSync(file));
-          links.push(new vscode.DocumentLink(new vscode.Range(line, column, line, column + name.length), vscode.Uri.file(file)));
-        } catch { /* Missing or out-of-project sources are reported during build. */ }
+        const include = includeLocation(document, line);
+        if (!include) continue;
+        const link = new vscode.DocumentLink(include.range, include.uri);
+        link.tooltip = 'Open included source';
+        links.push(link);
       }
       return links;
     }}),

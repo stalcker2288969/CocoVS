@@ -5,8 +5,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
+const {createHash} = require('node:crypto');
 const {cdmbotManager, managedCdmbotPython} = require('../src/development-tools');
-const {resolveSources} = require('../src/project');
+const {resolveSources, loadProject, projectDependencies, verifyPackages} = require('../src/project');
 const {build} = require('../src/build');
 const {createJob} = require('../src/jobs');
 const {jsonResult} = require('../src/cdmbot');
@@ -33,7 +34,7 @@ test('managed cdmbot installation is isolated, capability checked, and preserves
     }
     if (args.includes('pip')) return {code: fail ? 1 : 0, stderr: 'simulated installation failure'};
     const ready = await fs.stat(tool.file).catch(() => undefined);
-    return {code: ready ? 0 : 1, stdout: ready ? JSON.stringify({api: 1, automatic_packages: true, commands: ['build', 'analyze']}) : ''};
+    return {code: ready ? 0 : 1, stdout: ready ? JSON.stringify({api: 1, automatic_packages: true, template_constants: true, unified_manifest: true, language_versions: ['1.0'], commands: ['build', 'analyze']}) : ''};
   };
   const manager = cdmbotManager(root, () => 'legacy-python', {prepare: async () => ({python: {file: 'base-python', args: []}})},
     execute, async () => ({file: 'legacy-python', args: []}));
@@ -54,6 +55,8 @@ test('initialization uses the shared CLI template and preserves an existing entr
   const template = require('../src/project-template.json');
   const config = await initializeProject(root, 'cdm16', 'harvard');
   assert.equal(config.entry, 'src/main.asm');
+  assert.equal(config.languageVersion, '1.0');
+  assert.deepEqual(config.dependencies, {});
   assert.equal(await fs.readFile(path.join(root, config.entry), 'utf8'), template.sources.cdm16);
   assert.match(await fs.readFile(path.join(root, 'tests.yaml'), 'utf8'), /memory_model: harvard/);
   const existing = await fixture(t);
@@ -63,6 +66,42 @@ test('initialization uses the shared CLI template and preserves an existing entr
   assert.equal(await fs.readFile(path.join(existing, 'README.md'), 'utf8'), 'Existing README');
   assert.equal(await fs.readFile(path.join(existing, 'main.asm'), 'utf8'), 'asect 0\nhalt\nend\n');
   await assert.rejects(fs.stat(path.join(existing, 'tests.yaml')), {code: 'ENOENT'});
+  const library = path.join(root, 'my-lib');
+  const manifest = await initializeProject(library, 'cdm16', 'vonNeumann', {library: true});
+  assert.equal(manifest.languageVersion, '1.0');
+  assert.deepEqual(manifest.dependencies, {});
+  assert.equal(await fs.readFile(path.join(library, 'lib.asm'), 'utf8'), template.librarySource);
+});
+
+test('project dependencies merge legacy metadata and reject incompatible dialects', async t => {
+  const root = await fixture(t);
+  const project = {entry: 'main.asm', target: 'cdm8', languageVersion: '1.0', dependencies: {'byte-utils': '*'}};
+  await fs.writeFile(path.join(root, 'cdm-project.json'), JSON.stringify(project));
+  await fs.writeFile(path.join(root, 'cdm-packages.json'), JSON.stringify({version: 1, dependencies: {other: '*'}}));
+  assert.deepEqual(projectDependencies(root).dependencies, {'byte-utils': '*', other: '*'});
+  await fs.writeFile(path.join(root, 'cdm-packages.json'), JSON.stringify({version: 1, dependencies: {'byte-utils': {git: 'different'}}}));
+  assert.throws(() => projectDependencies(root), /conflicting/);
+  project.languageVersion = '2.0';
+  await fs.writeFile(path.join(root, 'cdm-project.json'), JSON.stringify(project));
+  assert.throws(() => loadProject(root), /Unsupported languageVersion/);
+});
+
+test('the native backend checks the dialect of installed packages with valid hashes', async t => {
+  const root = await fixture(t);
+  const config = {entry: 'main.asm', target: 'cdm8', languageVersion: '1.0', dependencies: {math: '*'}};
+  await fs.writeFile(path.join(root, 'cdm-project.json'), JSON.stringify(config));
+  const directory = path.join(root, '.cdm/packages/math');
+  await fs.mkdir(directory, {recursive: true});
+  for (const version of ['2.0', undefined]) {
+    const manifest = JSON.stringify({name: 'math', languageVersion: version});
+    await fs.writeFile(path.join(directory, 'cdm-package.json'), manifest);
+    const entry = {targets: ['cdm8'], dependencies: {}, files: {
+      'cdm-package.json': createHash('sha256').update(manifest).digest('hex'),
+    }};
+    await fs.writeFile(path.join(root, 'cdm-packages.lock.json'), JSON.stringify({version: 1, packages: {math: entry}}));
+    if (version) assert.throws(() => verifyPackages(root, config), /languageVersion.*incompatible/);
+    else assert.doesNotThrow(() => verifyPackages(root, config));
+  }
 });
 
 test('terminal launchers forward arguments and register a user PATH idempotently', async t => {
@@ -132,6 +171,15 @@ test('installed cdmbot development API builds and tests a locked package through
   const cli = async args => (await jsonResult(python, ['-m', 'cdmbot', ...args, '--json'])).report;
   const app = path.join(root, 'app');
   assert.ok((await cli(['create', app, '--target', 'cdm8'])).passed);
+  const configuration = JSON.parse(await fs.readFile(path.join(app, 'cdm-project.json'), 'utf8'));
+  const local = path.join(root, 'local');
+  await fs.mkdir(local);
+  assert.deepEqual(configuration, await initializeProject(local, 'cdm8'));
+  const cliLibrary = path.join(root, 'my-lib');
+  assert.ok((await cli(['create', cliLibrary, '--library', '--target', 'cdm16'])).passed);
+  const localLibrary = path.join(root, 'other', 'my-lib');
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(cliLibrary, 'cdm-package.json'), 'utf8')),
+    await initializeProject(localLibrary, 'cdm16', 'vonNeumann', {library: true}));
   const file = path.join(app, 'src/main.asm');
   await fs.writeFile(file, '# @include "@byte-utils/lib.asm"\nbyte_increment: ext\nasect 0\nmain:\nsetsp 240\nldi r0, 41\njsr byte_increment\nhalt\nend\n');
   const job = createJob({file, workspace: app, allowMissingPackages: true});
@@ -142,6 +190,8 @@ test('installed cdmbot development API builds and tests a locked package through
   assert.equal(state.registers[0], 42);
   assert.equal(state.sp, 240);
   assert.ok(JSON.parse(await fs.readFile(path.join(app, 'cdm-packages.lock.json'), 'utf8')).packages['byte-utils']);
+  assert.equal(JSON.parse(await fs.readFile(path.join(app, 'cdm-project.json'), 'utf8')).dependencies['byte-utils'], '*');
+  await assert.rejects(fs.stat(path.join(app, 'cdm-packages.json')), {code: 'ENOENT'});
   const analyzed = await cli(['analyze', app]);
   assert.equal(analyzed.files.length, 2);
   assert.equal(analyzed.passed, true);

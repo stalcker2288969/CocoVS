@@ -55,6 +55,7 @@ function instructionForms(target, name) {
 function operandKinds(context, target, instructions, macros) {
   const name = context.name.toLowerCase();
   const index = context.previous.length;
+  if (['ds', 'align', 'asect'].includes(name)) return index === 0 ? ['l'] : [];
   if (name === 'is' || name === 'stays' || name === 'until') {
     if (index === 0) return ['condition'];
     return name === 'is' && index === 1 && conditionNames(target).includes(context.previous[0].toLowerCase()) ? ['conjunction'] : [];

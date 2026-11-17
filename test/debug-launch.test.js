@@ -28,6 +28,8 @@ test('the native VS Code launch provider builds an active CdM-8 file with no lau
   let taskProvider;
   let commandLaunch;
   let saves = 0;
+  let projectMode = 'existing';
+  let projectLibrary = false;
   const commands = new Map();
   const api = {
     Uri: {file: uri}, ProgressLocation: {}, Range: class {}, Diagnostic: class {}, DiagnosticSeverity: {Error: 0},
@@ -42,7 +44,14 @@ test('the native VS Code launch provider builds an active CdM-8 file with no lau
       activeTextEditor: {document: {uri: uri(source), languageId: 'cocovs-assembly'}},
       createOutputChannel: () => ({show() {}, append: text => output.push(text), appendLine: text => output.push(text)}),
       showErrorMessage: message => errors.push(message),
-      showQuickPick: async items => items.includes('cdm8') ? 'cdm8' : items[0],
+      showQuickPick: async items => {
+        if (items[0]?.value === 'existing') return items.find(item => item.value === projectMode);
+        if (items[0]?.library !== undefined) return items.find(item => item.library === projectLibrary);
+        return items.includes('cdm8') ? 'cdm8' : items[0];
+      },
+      showOpenDialog: async () => [uri(root)],
+      showInputBox: async () => 'my-lib',
+      showInformationMessage: async () => undefined,
       showTextDocument: async () => {},
       withProgress: (_options, action) => action(undefined, token),
     },
@@ -152,4 +161,15 @@ test('the native VS Code launch provider builds an active CdM-8 file with no lau
   assert.equal(await provider.resolveDebugConfigurationWithSubstitutedVariables(folder, old, token), undefined);
   assert.match(errors[0], /ldi: expected 2 arguments, got 3/);
   assert.deepEqual(await fs.readFile(projectLaunch.artifacts.image), image);
+  projectMode = 'new';
+  projectLibrary = true;
+  await commands.get('cocovs.createProject')();
+  const library = path.join(root, 'my-lib');
+  const libraryManifest = JSON.parse(await fs.readFile(path.join(library, 'cdm-package.json'), 'utf8'));
+  assert.equal(libraryManifest.name, 'my-lib');
+  assert.equal(libraryManifest.languageVersion, '1.0');
+  const original = await fs.readFile(path.join(library, 'lib.asm'));
+  await commands.get('cocovs.createCdmbotProject')();
+  assert.deepEqual(await fs.readFile(path.join(library, 'lib.asm')), original);
+  await assert.rejects(fs.access(path.join(library, 'cdm-project.json')), {code: 'ENOENT'});
 });

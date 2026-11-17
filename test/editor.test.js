@@ -26,6 +26,8 @@ test('editor completes includes and imported symbols, colors references and navi
   const mainDoc = document(main, text);
   const libDoc = document(library, 'rsect math\n# Computes the result\ncalculate>\n    rts\nend\n');
   const providers = {};
+  const watchers = [];
+  let refreshes = 0;
   const dispose = {dispose() {}};
   class Position {
     constructor(line, character) { this.line = line; this.character = character; }
@@ -40,7 +42,7 @@ test('editor completes includes and imported symbols, colors references and navi
     commands: {registerCommand: () => dispose},
     Uri: {file: uri}, Position, Range, EndOfLine: {CRLF: 2}, SymbolKind: {}, CodeActionKind: {QuickFix: 'quickfix'},
     Location: class { constructor(target, range) { this.uri = target; this.range = range; } },
-    EventEmitter: class { fire() {} dispose() {} },
+    EventEmitter: class { fire() { refreshes++; } dispose() {} },
     MarkdownString: class {
       value = '';
       appendText(value) { this.value += value; }
@@ -49,8 +51,9 @@ test('editor completes includes and imported symbols, colors references and navi
     },
     Hover: class { constructor(contents) { this.contents = contents; } },
     SignatureHelp: class {},
-    SignatureInformation: class { constructor(label) { this.label = label; } },
-    ParameterInformation: class { constructor(label) { this.label = label; } },
+    SignatureInformation: class { constructor(label, documentation) { this.label = label; this.documentation = documentation; } },
+    ParameterInformation: class { constructor(label, documentation) { this.label = label; this.documentation = documentation; } },
+    DocumentLink: class { constructor(range, target) { this.range = range; this.target = target; } },
     TextEdit: {insert: (position, newText) => ({position, newText})},
     WorkspaceEdit: class { entries = []; replace(uri, range, text) { this.entries.push({uri, range, text}); } },
     CompletionItem: class { constructor(label, kind) { this.label = label; this.kind = kind; } },
@@ -66,6 +69,15 @@ test('editor completes includes and imported symbols, colors references and navi
       textDocuments: [mainDoc, libDoc], getWorkspaceFolder: () => ({uri: uri(root)}),
       getConfiguration: () => ({get: () => 'cdm8'}), onDidSaveTextDocument: () => dispose,
       onDidChangeTextDocument: () => dispose, onDidCloseTextDocument: () => dispose, onDidChangeConfiguration: () => dispose,
+      openTextDocument: async target => document(target.fsPath, await fs.readFile(target.fsPath, 'utf8')),
+      createFileSystemWatcher(pattern) {
+        const watcher = {...dispose, pattern,
+          onDidCreate: callback => { watcher.created = callback; return dispose; },
+          onDidChange: callback => { watcher.changed = callback; return dispose; },
+          onDidDelete: callback => { watcher.deleted = callback; return dispose; }};
+        watchers.push(watcher);
+        return watcher;
+      },
     },
     window: {visibleTextEditors: [], onDidChangeVisibleTextEditors: () => dispose},
     languages: new Proxy({createDiagnosticCollection: () => dispose}, {
@@ -248,4 +260,83 @@ test('editor completes includes and imported symbols, colors references and navi
   const edit = await rename.provideRenameEdits(importer, new Position(3, 10), 'sum', token);
   assert.deepEqual(edit.entries.map(entry => [entry.uri.fsPath, entry.range.start.line, entry.text]),
     [[main, 1, 'sum'], [main, 3, 'sum'], [library, 2, 'sum']]);
+
+  const standalone = path.join(root, 'sorting');
+  const templateDoc = document(main, 'tplate Person\nname: ds 10\nage: ds 1\nid: ds 3\nasect 0\n    addsp -Person._\n');
+  const templateItems = await completion.provideCompletionItems(templateDoc, new Position(5, 18), token);
+  assert.ok(templateItems.some(item => item.label === 'Person._'));
+  assert.ok(templateItems.some(item => item.label === 'Person.age'));
+  const templateHover = await hover.provideHover(templateDoc, new Position(5, 16), token);
+  assert.match(templateHover.contents[0].value, /14/);
+  const fieldDoc = document(main, templateDoc.getText() + '    ldi r0, Person.age\n');
+  const fieldDefinition = await definition.provideDefinition(fieldDoc, new Position(6, 19), token);
+  assert.equal(fieldDefinition[0].range.start.line, 2);
+  assert.equal(fieldDefinition[0].range.end.character, 3);
+  const packageDirectory = path.join(standalone, '.cdm', 'packages', 'memoryze8');
+  const helperDirectory = path.join(standalone, '.cdm', 'packages', 'helper');
+  await fs.mkdir(packageDirectory, {recursive: true});
+  await fs.mkdir(helperDirectory, {recursive: true});
+  const packageEntry = path.join(packageDirectory, 'lib.asm');
+  const macroFile = path.join(packageDirectory, 'memory.mlb');
+  await fs.writeFile(packageEntry, '# @include "memory.mlb"\n# @include "@helper/lib.asm"\nend\n');
+  await fs.writeFile(path.join(packageDirectory, 'cdm-package.json'), '{"name":"memoryze8","version":"0.1.0","description":"Memory helpers"}');
+  await fs.writeFile(macroFile, '# Store a byte\n# @param ADDRESS Destination address\n# @param VALUE Immediate byte\n# @return mem[ADDRESS] = VALUE\n# @changed r0, r1, PS, mem[ADDRESS]\n*setmem/2\n    ldi r0, $1\n    ldi r1, $2\n    st r0, r1\n');
+  await fs.writeFile(path.join(helperDirectory, 'lib.asm'), '# @include "pointer tools.mlb"\nend\n');
+  await fs.writeFile(path.join(helperDirectory, 'pointer tools.mlb'), '# Increment pointed byte\n# @param PTR Address register\n# @return mem[PTR] increases\n# @changed r3, PS, mem[PTR]\n*incptr/1\n    ld $1, r3\n    inc r3\n    st $1, r3\n\n# Increment using scratch\n# @param PTR Address register\n# @param TMP Scratch register\n# @return mem[PTR] increases\n# @changed TMP, PS, mem[PTR]\n*incptr/2\n    ld $1, $2\n    inc $2\n    st $1, $2\n\n# Override an instruction name\n# @param FIRST First register\n# @param SECOND Second register\n# @return SECOND receives FIRST\n# @changed SECOND\n*inc/2\n    move $1, $2\n');
+  await fs.writeFile(path.join(standalone, 'cdm-packages.json'), '{"version":1,"dependencies":{"memoryze8":"*"}}');
+  const lockFile = path.join(standalone, 'cdm-packages.lock.json');
+  await fs.writeFile(lockFile, '{"version":1,"packages":{"memoryze8":{},"helper":{}}}');
+  const packageMain = path.join(standalone, 'sort.asm');
+  const packageText = '# @include "@memoryze8/lib.asm"\nasect 0\n    setmem result, 42\n    incptr r0, r1\nresult: dc 0\nend\n';
+  await fs.writeFile(packageMain, packageText);
+  const packageDoc = document(packageMain, packageText);
+  api.workspace.textDocuments.push(packageDoc);
+  const packageSuggestions = async line => completion.provideCompletionItems(document(packageMain, line), new Position(0, line.length), token);
+  const names = await packageSuggestions('# @include "@');
+  assert.deepEqual(names.map(item => item.label), ['@helper/', '@memoryze8/']);
+  assert.equal(names.find(item => item.label === '@memoryze8/').insertText, '@memoryze8/');
+  assert.match(names.find(item => item.label === '@memoryze8/').detail, /Memory helpers/);
+  const packageFiles = await packageSuggestions('# @include "@memoryze8/');
+  assert.ok(packageFiles.some(item => item.label === 'memory.mlb'));
+  assert.ok(packageFiles.some(item => item.label === 'lib.asm' && item.insertText === 'lib.asm"'));
+  assert.ok(!(await packageSuggestions('# @include "@memoryze8/../../')).length);
+
+  const macros = await completion.provideCompletionItems(packageDoc, new Position(2, 7), token);
+  const setmem = macros.find(item => item.label === 'setmem');
+  assert.match(setmem.detail, /setmem\(ADDRESS, VALUE\)/);
+  assert.match(setmem.documentation.value, /Arguments[\s\S]*Destination address[\s\S]*Returns[\s\S]*Changed/);
+  assert.ok(!setmem.additionalTextEdits);
+  const macroHover = await hover.provideHover(packageDoc, new Position(2, 7), token);
+  assert.match(macroHover.contents[0].value, /setmem\(ADDRESS, VALUE\)/);
+  assert.equal(macroHover.contents[0].value.match(/\*\*Arguments\*\*/g).length, 1);
+  const macroHelp = await providers.registerSignatureHelpProvider.provideSignatureHelp(packageDoc, new Position(3, 14), token);
+  assert.equal(macroHelp.signatures.length, 2);
+  assert.equal(macroHelp.signatures[macroHelp.activeSignature].parameters[macroHelp.activeParameter].label, 'TMP');
+  assert.equal(macroHelp.signatures[macroHelp.activeSignature].parameters[1].documentation, 'Scratch register');
+  const overrideDoc = document(packageMain, '# @include "@memoryze8/lib.asm"\n    inc r0, ');
+  assert.ok((await completion.provideCompletionItems(overrideDoc, new Position(1, 12), token)).some(item => item.label === 'r1'));
+  const macroDefinition = await definition.provideDefinition(packageDoc, new Position(2, 7), token);
+  assert.equal(macroDefinition[0].uri.fsPath, macroFile);
+  const includeDefinition = await definition.provideDefinition(packageDoc, new Position(0, 18), token);
+  assert.equal(includeDefinition[0].uri.fsPath, packageEntry);
+  const links = providers.registerDocumentLinkProvider.provideDocumentLinks(packageDoc);
+  assert.equal(links[0].target.fsPath, packageEntry);
+  assert.equal(packageDoc.lineAt(0).text.slice(links[0].range.start.character, links[0].range.end.character), '@memoryze8/lib.asm');
+  assert.equal(providers.registerDocumentLinkProvider.provideDocumentLinks(mainDoc)[0].target.fsPath, library);
+  const invalidLinks = document(packageMain, '# @include "@memoryze8/../../sort.asm"\n# @include "@unlocked/lib.asm"');
+  assert.deepEqual(providers.registerDocumentLinkProvider.provideDocumentLinks(invalidLinks), []);
+  const packageColors = await semantic.provideDocumentSemanticTokens(packageDoc, token);
+  assert.ok(packageColors.some(([line, column, _length, type]) => line === 2 && column === 4 && type === 1));
+
+  const cacheWatcher = watchers.find(watcher => watcher.pattern.includes('.cdm/packages'));
+  const beforeRefresh = refreshes;
+  await fs.appendFile(macroFile, '\n# Loaded after package update\n# @return Ready\n# @changed PS\n*loadedlater/0\n    nop\n');
+  cacheWatcher.changed(uri(macroFile));
+  assert.ok(refreshes > beforeRefresh);
+  assert.ok((await completion.provideCompletionItems(packageDoc, new Position(2, 7), token)).some(item => item.label === 'loadedlater'));
+  const lockWatcher = watchers.find(watcher => watcher.pattern.endsWith('cdm-packages.lock.json'));
+  await fs.writeFile(lockFile, '{"version":1,"packages":{}}');
+  lockWatcher.changed(uri(lockFile));
+  assert.deepEqual(await packageSuggestions('# @include "@'), []);
+  assert.ok(!(await completion.provideCompletionItems(packageDoc, new Position(2, 7), token)).some(item => item.label === 'setmem'));
 });

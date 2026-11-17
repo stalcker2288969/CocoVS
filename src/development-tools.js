@@ -8,7 +8,7 @@ const {locateProject, inferTarget} = require('./project');
 const {getLaunchProfile} = require('./launch-profile');
 const {exposeCdmbot} = require('./cdmbot-launcher');
 
-const VERSION = '0.2.1';
+const VERSION = '0.2.3';
 const environmentPython = home => path.join(home, process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
 const managedCdmbotPython = home => home && environmentPython(path.join(home, 'cdmbot-' + VERSION));
 
@@ -19,7 +19,8 @@ function cdmbotManager(home, readSettings, toolchain, run = processResult, locat
     try {
       const result = await run(python, ['-I', '-m', 'cdmbot', 'capabilities', '--json'], {timeout: 10000});
       const report = JSON.parse(result.stdout);
-      return result.code === 0 && report.api === 1 && report.automatic_packages === true && Array.isArray(report.commands) ? report : undefined;
+      return result.code === 0 && report.api === 1 && report.automatic_packages === true && report.template_constants === true &&
+        report.unified_manifest === true && report.language_versions?.includes('1.0') && Array.isArray(report.commands) ? report : undefined;
     } catch { return undefined; }
   }
   async function find() {
@@ -139,28 +140,6 @@ function registerDevelopment(context, vscode, toolchain, output, showError) {
         '', '**Syntax:** ' + (report.passed ? 'passed' : 'errors found'), '', ...report.diagnostics.map(value => '```text\n' + value + '\n```')].join('\n');
       await vscode.window.showTextDocument(await vscode.workspace.openTextDocument({language: 'markdown', content: text}));
     },
-    'cocovs.createCdmbotProject': async () => {
-      const selected = await vscode.window.showOpenDialog({canSelectFolders: true, canSelectFiles: false, canSelectMany: false, openLabel: 'Choose parent folder'});
-      if (!selected?.length) return;
-      const name = await vscode.window.showInputBox({prompt: 'New project folder name', validateInput: value => /^[a-zA-Z0-9_-]+$/.test(value) ? undefined : 'Use letters, numbers, hyphens or underscores.'});
-      if (!name) return;
-      const kind = await vscode.window.showQuickPick([
-        {label: 'Application', description: 'Executable project with a smoke test'},
-        {label: 'Library', description: 'Reusable package with cdm-package.json'},
-      ], {placeHolder: 'Project type'});
-      if (!kind) return;
-      const target = await vscode.window.showQuickPick(['cdm8', 'cdm8e', 'cdm16', 'cdm16e'], {placeHolder: 'Processor'});
-      if (!target) return;
-      const architecture = await vscode.window.showQuickPick(['vonNeumann', 'harvard'], {placeHolder: 'Memory architecture'});
-      if (!architecture) return;
-      const report = await invoke(['create', path.join(selected[0].fsPath, name), '--target', target, '--architecture', architecture,
-        ...(kind.label === 'Library' ? ['--library'] : [])]);
-      if (report) {
-        await vscode.window.showTextDocument(vscode.Uri.file(report.entry));
-        const choice = await vscode.window.showInformationMessage('Project created. Open its folder to use its project configuration?', 'Open Project Folder');
-        if (choice === 'Open Project Folder') await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(report.root));
-      }
-    },
     'cocovs.addPackageFromGit': async () => {
       const name = await vscode.window.showInputBox({prompt: 'Package name', validateInput: value => /^[a-z][a-z0-9_-]{0,63}$/.test(value) ? undefined : 'Use a lowercase package name.'});
       if (!name) return;
@@ -210,7 +189,7 @@ function registerDevelopment(context, vscode, toolchain, output, showError) {
   for (const [name, action] of Object.entries(actions)) context.subscriptions.push(vscode.commands.registerCommand(name, async () => {
     try {
       trusted();
-      if (!['cocovs.installCdmbot', 'cocovs.createCdmbotProject'].includes(name) && !await vscode.workspace.saveAll(false)) return;
+      if (name !== 'cocovs.installCdmbot' && !await vscode.workspace.saveAll(false)) return;
       output.show(true);
       await action();
     }

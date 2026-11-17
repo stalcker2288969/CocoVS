@@ -11,6 +11,38 @@ const PROJECT_BUILD = 'CdM Project: Compile';
 const ASSEMBLY = /\.(?:asm|mlb|cdm8e?|cdm16e?|cocoasm)$/i;
 const INCLUDE = /^\s*(?:#|;)\s*@include\s+(?:"([^"]+)"|'([^']+)'|([^\s#;]+))\s*(?:[#;].*)?$/i;
 const TARGETS = ['cdm8', 'cdm8e', 'cdm16', 'cdm16e', 'custom'];
+const LANGUAGE_VERSION = '1.0';
+
+function validateLanguage(config) {
+  const version = config.languageVersion === undefined ? LANGUAGE_VERSION : config.languageVersion;
+  if (version !== LANGUAGE_VERSION) throw new Error('Unsupported languageVersion ' + JSON.stringify(version) +
+    '. This CocoVS supports ' + LANGUAGE_VERSION + '. Update the toolchain or choose a supported profile.');
+  return version;
+}
+
+function projectDependencies(directory) {
+  const project = path.join(directory, MANIFEST);
+  const legacy = path.join(directory, 'cdm-packages.json');
+  const manifest = [project, path.join(directory, 'cdm-package.json'), legacy].find(file => fs.existsSync(file));
+  const config = manifest ? JSON.parse(readText(manifest)) : {};
+  const dependencies = {...config.dependencies};
+  if (config.dependencies !== undefined && (!config.dependencies || typeof config.dependencies !== 'object' || Array.isArray(config.dependencies))) {
+    throw new Error('dependencies must be an object in ' + manifest);
+  }
+  if (manifest === project && fs.existsSync(legacy)) {
+    const previous = JSON.parse(readText(legacy));
+    if (previous.version !== 1 || !previous.dependencies || typeof previous.dependencies !== 'object' || Array.isArray(previous.dependencies)) {
+      throw new Error('Invalid cdm-packages.json.');
+    }
+    for (const [name, spec] of Object.entries(previous.dependencies)) {
+      if (Object.hasOwn(dependencies, name) && !isDeepStrictEqual(dependencies[name], spec)) {
+        throw new Error(name + ': conflicting dependencies in cdm-project.json and cdm-packages.json.');
+      }
+      dependencies[name] = spec;
+    }
+  }
+  return {dependencies, languageVersion: validateLanguage(config)};
+}
 
 function confined(root, name) {
   const absolute = path.resolve(root, name);
@@ -42,6 +74,7 @@ function loadProject(root) {
   catch (error) { throw new Error(file + ': ' + error.message); }
   if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('Expected a project object.');
   const result = {architecture: 'vonNeumann', environment: 'emulator', extraSources: [], ...config};
+  validateLanguage(result);
   if (!TARGETS.includes(result.target)) throw new Error('target must be ' + TARGETS.join(', '));
   if (!['harvard', 'vonNeumann'].includes(result.architecture)) throw new Error('Unknown memory architecture.');
   if (!['external', 'emulator'].includes(result.environment)) throw new Error('Unknown runtime environment.');
@@ -73,13 +106,35 @@ function sourceDirective(line) {
   return {name, folder, path: (folder ? name.slice(0, -1) : name).replaceAll('\\', '/')};
 }
 
+function packageRoot(root, file) {
+  const boundary = path.resolve(root);
+  let directory = path.dirname(confined(boundary, file));
+  while (true) {
+    if (!path.relative(boundary, directory).split(path.sep).includes('.cdm') &&
+        [MANIFEST, 'cdm-package.json', 'cdm-packages.json', 'cdm-packages.lock.json'].some(name => fs.existsSync(path.join(directory, name)))) return directory;
+    if (!path.relative(boundary, directory)) return boundary;
+    directory = path.dirname(directory);
+  }
+}
+
+function includePath(root, file, name, {packages = packageRoot(root, file), allowMissingPackages = false} = {}) {
+  if (!name.startsWith('@')) return confined(root, path.resolve(path.dirname(file), name));
+  const match = /^@([a-z][a-z0-9_-]{0,63})\/(.*)$/.exec(name);
+  if (!match) throw new Error('Package imports use @name/path.asm.');
+  const lockFile = path.join(packages, 'cdm-packages.lock.json');
+  if (allowMissingPackages && !fs.existsSync(lockFile)) return undefined;
+  const lock = JSON.parse(readText(lockFile));
+  const base = confined(root, path.join(packages, '.cdm', 'packages', match[1]));
+  if (allowMissingPackages && (!Object.hasOwn(lock.packages ?? {}, match[1]) || !fs.existsSync(base))) return undefined;
+  if (!Object.hasOwn(lock.packages ?? {}, match[1])) throw new Error('Package is not locked: ' + match[1] + '. Restore assembly packages first.');
+  return confined(base, path.resolve(base, match[2]));
+}
+
 function verifyPackages(root, config) {
-  const packageRoot = locateProject(path.resolve(root, config.entry), root, 'cdm-packages.json');
-  if (!packageRoot) return;
-  if (fs.existsSync(path.join(packageRoot, '.cdm', 'operation.lock'))) throw new Error('A package operation is in progress. Retry when it finishes.');
-  const dependencies = JSON.parse(readText(path.join(packageRoot, 'cdm-packages.json'))).dependencies;
-  if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) throw new Error('Invalid cdm-packages.json.');
-  const lock = Object.keys(dependencies).length ? JSON.parse(readText(path.join(packageRoot, 'cdm-packages.lock.json'))).packages : {};
+  const directory = packageRoot(root, path.resolve(root, config.entry));
+  if (fs.existsSync(path.join(directory, '.cdm', 'operation.lock'))) throw new Error('A package operation is in progress. Retry when it finishes.');
+  const {dependencies, languageVersion} = projectDependencies(directory);
+  const lock = Object.keys(dependencies).length ? JSON.parse(readText(path.join(directory, 'cdm-packages.lock.json'))).packages : {};
   const pending = Object.entries(dependencies), checked = new Set();
   while (pending.length) {
     const [name, spec] = pending.pop();
@@ -89,7 +144,7 @@ function verifyPackages(root, config) {
     const entry = lock?.[name];
     if (!entry || spec !== '*' && !isDeepStrictEqual(entry.source, spec)) throw new Error('Package is not locked: ' + name);
     if (!entry.targets?.includes(config.target)) throw new Error('Package does not support ' + config.target + ': ' + name);
-    const directory = path.join(packageRoot, '.cdm', 'packages', name);
+    const installed = path.join(directory, '.cdm', 'packages', name);
     const hashes = {};
     function scan(folder) {
       if (fs.lstatSync(folder).isSymbolicLink()) throw new Error('Package symlinks are not supported.');
@@ -100,12 +155,16 @@ function verifyPackages(root, config) {
         if (stat.isDirectory()) scan(file);
         else if (stat.isFile()) {
           if (stat.size > 8 * 1024 * 1024) throw new Error('Package file exceeds its size limit.');
-          hashes[path.relative(directory, file).split(path.sep).join('/')] = createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+          hashes[path.relative(installed, file).split(path.sep).join('/')] = createHash('sha256').update(fs.readFileSync(file)).digest('hex');
         }
       }
     }
-    scan(directory);
+    scan(installed);
     if (!isDeepStrictEqual(hashes, entry.files)) throw new Error('Package sources are missing or modified: ' + name + '. Restore assembly packages first.');
+    const manifest = JSON.parse(readText(path.join(installed, 'cdm-package.json')));
+    if ((manifest.languageVersion === undefined ? LANGUAGE_VERSION : manifest.languageVersion) !== languageVersion) {
+      throw new Error(name + ': languageVersion ' + JSON.stringify(manifest.languageVersion) + ' is incompatible with project ' + languageVersion + '.');
+    }
     pending.push(...Object.entries(entry.dependencies ?? {}));
   }
 }
@@ -115,19 +174,9 @@ function resolveSources(root, config, {read = readText, onError, allowMissingPac
   const visited = new Set();
   const stack = new Map();
   const result = [];
-  const packageRoot = locateProject(path.resolve(root, config.entry), root, 'cdm-packages.json') ?? root;
+  const packages = packageRoot(root, path.resolve(root, config.entry));
   function dependency(name, parent) {
-    if (!name.startsWith('@')) return path.resolve(path.dirname(parent), name);
-    const match = /^@([a-z][a-z0-9_-]{0,63})\/(.+)$/.exec(name);
-    if (!match) throw new Error('Package imports use @name/path.asm.');
-    const lockFile = path.join(packageRoot, 'cdm-packages.lock.json');
-    if (allowMissingPackages && !fs.existsSync(lockFile)) return undefined;
-    const lock = JSON.parse(readText(lockFile));
-    if (allowMissingPackages && (!Object.hasOwn(lock.packages ?? {}, match[1]) ||
-        !fs.existsSync(path.join(packageRoot, '.cdm', 'packages', match[1])))) return undefined;
-    if (!Object.hasOwn(lock.packages ?? {}, match[1])) throw new Error('Package is not locked: ' + match[1] + '. Restore assembly packages first.');
-    const base = confined(root, path.join(packageRoot, '.cdm', 'packages', match[1]));
-    return confined(base, path.resolve(base, match[2]));
+    return includePath(root, parent, name, {packages, allowMissingPackages});
   }
   function visit(name, parent) {
     try {
@@ -285,4 +334,5 @@ function syncConfigs(root, config, projectRoot = root) {
 }
 
 module.exports = {ASSEMBLY, INCLUDE, MANIFEST, PROJECT_BUILD, PROJECT_DEBUG, TARGETS, combinedSource, confined,
-  inferTarget, loadProject, locateProject, readJsonc, resolveSources, sourceDirective, syncConfigs, verifyPackages};
+  inferTarget, loadProject, locateProject, readJsonc, resolveSources, sourceDirective, syncConfigs, verifyPackages, packageRoot, includePath,
+  LANGUAGE_VERSION, validateLanguage, projectDependencies};

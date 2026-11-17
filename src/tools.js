@@ -90,11 +90,18 @@ function launcherPython(file) {
     fd = fs.openSync(file, 'r');
     const bytes = Buffer.alloc(4096);
     const text = bytes.toString('utf8', 0, fs.readSync(fd, bytes, 0, bytes.length, 0));
-    const shebang = /^#![ \t]*([^\r\n]+)/.exec(text)?.[1].trim();
+    let shebang = /^#![ \t]*([^\r\n]+)/.exec(text)?.[1].trim();
+    if (!shebang && text.startsWith('MZ')) {
+      // Windows pip launchers store the interpreter between the PE stub and ZIP payload.
+      const size = fs.fstatSync(fd).size;
+      const tail = Buffer.alloc(Math.min(size, 64 * 1024));
+      fs.readSync(fd, tail, 0, tail.length, size - tail.length);
+      shebang = /#![ \t]*([^\r\n\0]+)\r?\nPK\x03\x04/.exec(tail.toString('utf8'))?.[1].trim();
+    }
     if (!shebang) return undefined;
     // pip uses a short shell trampoline when the Python path contains spaces.
     const shim = /^'''exec' (?:"([^"]+)"|([^ \t\r\n]+)) "\$0" "\$@"/m.exec(text);
-    const interpreter = shim ? shim[1] ?? shim[2] : shebang;
+    const interpreter = (shim ? shim[1] ?? shim[2] : shebang).replace(/^"([^"]+)"$/, '$1');
     const direct = /^(.+[\\/]python(?:\d+(?:\.\d+)*)?(?:\.exe)?)(?:[ \t].*)?$/i.exec(interpreter)?.[1];
     const env = /(?:^|\/)env[ \t]+(?:-S[ \t]+)?(python(?:\d+(?:\.\d+)*)?)(?:[ \t]|$)/.exec(interpreter)?.[1];
     return path.isAbsolute(direct ?? '') ? direct : env && executablePath(env);

@@ -19,7 +19,7 @@ async function main() {
     await new Promise((resolve, reject) => {
       const args = [
         '--user-data-dir=' + userData, '--extensions-dir=' + path.join(root, 'extensions'), '--disable-extensions',
-        '--skip-welcome', '--skip-release-notes',
+        '--skip-welcome', '--skip-release-notes', '--disable-workspace-trust',
         '--extensionDevelopmentPath=' + path.resolve(__dirname, '..'),
         '--extensionTestsPath=' + path.join(__dirname, 'editor.js'),
       ];

@@ -7,7 +7,7 @@ const {describeProblems, plainOutput} = require('./assembly-errors');
 const {assemblerProblems} = require('./build');
 const {operandProblems} = require('./operands');
 const {confined} = require('./project');
-const {processResult} = require('./tools');
+const {processResult, findDebug16Python, command} = require('./tools');
 
 function fileKey(file) {
   const absolute = path.resolve(file);
@@ -35,7 +35,16 @@ async function checkSyntax({root, target, sources}, tool, {signal, language, tem
       originals.set(fileKey(staged), file);
       inputs.push({file: staged});
     }
-    const result = await processResult(tool, ['-t', target, '-c', '-o', path.join(stage, 'syntax.obj'),
+    let assembler = tool;
+    const prefix = [];
+    if (textSources.some(source => /^\s*tplate\b/im.test(source.text))) {
+      const python = await findDebug16Python(tool, [command(process.platform === 'win32' ? 'python.exe' : 'python3')]);
+      if (python) {
+        assembler = python;
+        prefix.push('-E', path.join(__dirname, '../runtime/cocas_debug16.py'));
+      }
+    }
+    const result = await processResult(assembler, [...prefix, '-t', target, '-c', '-o', path.join(stage, 'syntax.obj'),
       ...inputs.map(input => input.file)], {cwd: stage, signal, timeout: 8_000});
     const output = [...new Set([result.stderr, result.stdout].map(text => plainOutput(text).trim()).filter(Boolean))].join('\n');
     const {problems} = assemblerProblems(output, inputs.filter(input => !/\.mlb$/i.test(input.file)));

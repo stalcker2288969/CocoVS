@@ -11,7 +11,7 @@ const {friendlyMessage} = require('../src/assembly-errors');
 const {decodeImage, runProgram} = require('../src/runtime');
 const {branchTargets, colorTokens, completionContext, indexSymbols, symbolAt} = require('../src/symbols');
 const {externalInsertionLine, includeCandidates, includeContext} = require('../src/editor-support');
-const {syncConfigs} = require('../src/project');
+const {syncConfigs, packageRoot} = require('../src/project');
 const {command} = require('../src/tools');
 
 const placeholder = name => '$' + '{' + name + '}';
@@ -161,6 +161,31 @@ test('include completion uses the quoted path and suggests only eligible project
   assert.equal(items.find(item => item.name === 'subfolder').folder, true);
   assert.deepEqual(await includeCandidates(root, main, '../'), []);
   assert.deepEqual(await includeCandidates(root, main, ''), [{name: 'lib', folder: true}]);
+});
+
+test('include completion browses locked packages beside a nested standalone file', async t => {
+  const root = await fixture(t);
+  if (process.platform === 'win32') assert.equal(packageRoot(root.toUpperCase(), path.join(root, 'new.asm')), root.toUpperCase());
+  const directory = path.join(root, 'sorting');
+  const main = path.join(directory, 'sort.asm');
+  const installed = path.join(directory, '.cdm', 'packages');
+  const library = path.join(installed, 'memoryze8');
+  await fs.mkdir(path.join(library, 'nested'), {recursive: true});
+  await fs.mkdir(path.join(installed, 'unlocked'), {recursive: true});
+  await fs.writeFile(main, '');
+  await fs.writeFile(path.join(directory, 'cdm-packages.lock.json'), JSON.stringify({packages: {memoryze8: {}, missing: {}}}));
+  await fs.writeFile(path.join(library, 'cdm-package.json'), JSON.stringify({name: 'memoryze8', version: '0.1.0', description: 'Memory macros'}));
+  for (const file of ['lib.asm', 'memory.mlb', 'README.md', '.hidden.asm']) await fs.writeFile(path.join(library, file), '');
+  await fs.writeFile(path.join(library, 'nested', 'pointer tools.mlb'), '');
+  const packages = await includeCandidates(root, main, '', '@');
+  assert.deepEqual(packages.map(item => item.name), ['@memoryze8']);
+  assert.match(packages[0].detail, /0.1.0.*Memory macros/);
+  const files = await includeCandidates(root, main, '@memoryze8/');
+  assert.deepEqual(files.map(item => item.name).sort(), ['lib.asm', 'memory.mlb', 'nested']);
+  assert.deepEqual(await includeCandidates(root, main, '@memoryze8/nested/'), [{name: 'pointer tools.mlb', folder: false}]);
+  assert.deepEqual(await includeCandidates(root, main, '@unlocked/'), []);
+  assert.deepEqual(await includeCandidates(root, main, '@memoryze8/../../'), []);
+  assert.ok(includeContext('; @include "@memoryze8/mem', 24));
 });
 
 test('CoCAS diagnostics handle Windows paths, multiple problems and color codes', () => {

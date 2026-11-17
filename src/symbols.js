@@ -14,6 +14,14 @@ function indexSymbols(text, library = false, includeExternal = false) {
   const symbols = [];
   let documentation = [];
   let inMacro = false;
+  let template;
+  let offset = 0;
+  function finishTemplate() {
+    if (!template) return;
+    symbols.push({...template, name: template.name + '._', kind: 'constant', templateMember: true,
+      documentation: 'Template size in bytes' + (offset === undefined ? ', evaluated by CoCAS.' : ' = ' + offset + '.')});
+    template = undefined;
+  }
   for (const [line, original] of text.split(/\r?\n/).entries()) {
     const comment = /^\s*#+[ \t]?(.*)$/.exec(original);
     if (comment && !/^@include\b/i.test(comment[1].trimStart())) {
@@ -23,6 +31,14 @@ function indexSymbols(text, library = false, includeExternal = false) {
     const code = sourceLine(original);
     const macro = macroPattern.exec(code);
     const label = labelPattern.exec(code);
+    const header = /^\s*tplate\s+([A-Za-z_][\w]*)\s*$/i.exec(code);
+    if (!inMacro && /^\s*(?:asect|rsect|tplate|end)\b/i.test(code)) finishTemplate();
+    if (!inMacro && header) {
+      template = {name: header[1], line, column: code.indexOf(header[1]), definitionLength: header[1].length,
+        kind: 'template', documentation: documentation.join('\n').trim() || 'CoCAS structure template.'};
+      symbols.push(template);
+      offset = 0;
+    }
     if (macro && (!inMacro || library)) {
       symbols.push({name: macro[2], line, column: code.indexOf(macro[1]) + macro[1].length,
         kind: 'macro', arity: Number(macro[3]), documentation: documentation.join('\n').trim()});
@@ -33,17 +49,27 @@ function indexSymbols(text, library = false, includeExternal = false) {
         documentation = [];
         continue;
       }
-      let offset = 0;
+      let columnOffset = 0;
       for (const name of label[1].split(/\s*,\s*/)) {
-        const column = code.indexOf(name, offset);
-        symbols.push({name, line, column, kind: 'label', exported: label[2] === '>',
-          external, documentation: documentation.join('\n').trim()});
-        offset = column + name.length;
+        const column = code.indexOf(name, columnOffset);
+        symbols.push({name: template ? template.name + '.' + name : name, line, column,
+          kind: template ? 'field' : 'label', definitionLength: name.length, templateMember: !!template,
+          exported: label[2] === '>', external, documentation: [documentation.join('\n').trim(),
+            template && ('Template field offset in bytes' + (offset === undefined ? ', evaluated by CoCAS.' : ' = ' + offset + '.'))].filter(Boolean).join('\n')});
+        columnOffset = column + name.length;
+      }
+    }
+    if (template) {
+      const operation = operationAt(code);
+      if (operation && operation.name.toLowerCase() !== 'tplate') {
+        const count = /^\s*(\d+|0x[\da-f]+)\s*$/i.exec(code.slice(operation.end));
+        offset = operation.name.toLowerCase() === 'ds' && count && offset !== undefined ? offset + Number(count[1]) : undefined;
       }
     }
     if (/^\s*mend\b/i.test(code)) inMacro = false;
     documentation = [];
   }
+  finishTemplate();
   return symbols;
 }
 

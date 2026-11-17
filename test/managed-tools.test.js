@@ -152,6 +152,20 @@ test('CdM-16 finds the Python behind a CoCAS launcher on PATH', async t => {
   }
 });
 
+test('CoCAS discovers Python embedded after a Windows pip executable stub', async t => {
+  const root = await fixture(t);
+  const launcher = path.join(root, 'cocas.exe');
+  const python = path.join(root, 'Python With Spaces', 'python.exe');
+  const run = async tool => ({code: tool.file === python ? 0 : 1});
+  for (const interpreter of [python, '"' + python + '"']) {
+    const stub = Buffer.alloc(128 * 1024);
+    stub.write('MZ');
+    stub.write('#!\0misleading embedded string', 90000);
+    await fs.writeFile(launcher, Buffer.concat([stub, Buffer.from('#!' + interpreter + '\nPK\x03\x04archive')]));
+    assert.deepEqual(await findDebug16Python(command(launcher), [], run), command(python));
+  }
+});
+
 test('CdM-16 provisions a compatible CoCAS Python even when the external launcher and JAR work', async t => {
   const root = await fixture(t);
   const cocas = path.join(root, 'external', 'cocas');

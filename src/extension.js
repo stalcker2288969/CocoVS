@@ -357,17 +357,49 @@ function activate(context) {
 
   async function init() {
     requireTrust();
-    const root = localFolder();
-    const file = path.join(root, MANIFEST);
-    if (!(await fs.stat(file).catch(error => { if (error.code !== 'ENOENT') throw error; }))) {
-      const target = await vscode.window.showQuickPick(TARGETS, {placeHolder: 'Processor target'});
+    const mode = await vscode.window.showQuickPick([
+      {label: 'Use Existing Folder', value: 'existing'},
+      {label: 'Create New Folder', value: 'new'},
+    ], {placeHolder: 'Project location'});
+    if (!mode) return;
+    const folder = editorFolder();
+    const selected = await vscode.window.showOpenDialog({canSelectFolders: true, canSelectFiles: false,
+      canSelectMany: false, defaultUri: folder?.uri, openLabel: mode.value === 'new' ? 'Choose Parent Folder' : 'Choose Project Folder'});
+    if (!selected?.length) return;
+    let root = selected[0].fsPath;
+    if (mode.value === 'new') {
+      const name = await vscode.window.showInputBox({prompt: 'New project folder name',
+        validateInput: value => /^[a-zA-Z0-9_-]+$/.test(value) ? undefined : 'Use letters, numbers, hyphens or underscores.'});
+      if (!name) return;
+      root = path.join(root, name);
+    }
+    let manifest;
+    for (const name of [MANIFEST, 'cdm-package.json']) {
+      if ((await fs.stat(path.join(root, name)).catch(error => { if (error.code !== 'ENOENT') throw error; }))?.isFile()) {
+        manifest = name;
+        break;
+      }
+    }
+    if (!manifest) {
+      const kind = await vscode.window.showQuickPick([
+        {label: 'Application', description: 'Executable project with a smoke test', library: false},
+        {label: 'Library', description: 'Reusable assembly package', library: true},
+      ], {placeHolder: 'Project type'});
+      if (!kind) return;
+      const target = await vscode.window.showQuickPick(kind.library ? TARGETS.filter(value => value !== 'custom') : TARGETS,
+        {placeHolder: 'Processor target'});
       if (!target) return;
       const architecture = await vscode.window.showQuickPick(['vonNeumann', 'harvard'], {placeHolder: 'Memory architecture'});
       if (!architecture) return;
-      await initializeProject(root, target, architecture);
+      await initializeProject(root, target, architecture, {library: kind.library});
+      manifest = kind.library ? 'cdm-package.json' : MANIFEST;
     }
-    syncConfigs(root, loadProject(root));
-    await vscode.window.showTextDocument(vscode.Uri.file(file));
+    if (manifest === MANIFEST) syncConfigs(root, loadProject(root));
+    await vscode.window.showTextDocument(vscode.Uri.file(path.join(root, manifest)));
+    if (folder?.uri.fsPath !== root) {
+      const choice = await vscode.window.showInformationMessage('Project is ready. Open its folder?', 'Open Project Folder');
+      if (choice === 'Open Project Folder') await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(root));
+    }
   }
 
   function sync(document = vscode.window.activeTextEditor?.document) {
@@ -381,7 +413,7 @@ function activate(context) {
   }
 
   const actions = {
-    'cocovs.setup': () => setup(), 'cdmProject.init': init, 'cdmProject.sync': () => sync(),
+    'cocovs.setup': () => setup(), 'cocovs.createProject': init, 'cocovs.createCdmbotProject': init, 'cdmProject.init': init, 'cdmProject.sync': () => sync(),
     'cdmProject.build': uri => runCommand('build', uri), 'cocovs.run': uri => runCommand('run', uri), 'cdmProject.debug': uri => runCommand('debug', uri),
     'cocovs.configureFile': configureFile,
     'cocovs.debugExternal': () => runCommand('debugExternal'),

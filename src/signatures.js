@@ -61,6 +61,12 @@ const cdm8 = {
 
 function instructionSignatures(target, name) {
   const mnemonic = name.toLowerCase();
+  const directive = {
+    tplate: ['Define a structure layout with byte offsets. Use Name._ for its size and Name.field for a field offset.', ['name'], 'A template layout evaluated by CoCAS.'],
+    ds: ['Reserve a number of bytes in the current section or template.', ['count'], 'count bytes of storage.'],
+  }[mnemonic];
+  if (directive) return [{kind: 'instruction', name, documentation: [directive[0],
+    ...directive[1].map(parameter => '@param ' + parameter), '@return ' + directive[2]].join('\n')}];
   if (target === 'cdm16' || target === 'cdm16e') {
     if (!instructionSets[target].includes(mnemonic)) return [];
     const {summary, forms, inputs = {}, returns} = cdm16[mnemonic];

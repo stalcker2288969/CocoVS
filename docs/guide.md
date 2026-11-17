@@ -75,7 +75,7 @@ The [tested CdM-16 examples](../examples/word-sum/README.md) use a reset vector 
 
 ## Multi-file projects
 
-Open a folder and run **CocoVS: Initialize Project**. For a new project it creates `src/main.asm`, `cdm-project.json`, a smoke suite, a build task, and an F5 profile for supported debuggers. It shares the application template with `cdmbot create`. Existing `main.asm` or `src/main.asm` files are preserved.
+Open a folder and run **CocoVS: Create or Initialize Project**. For a new project it creates `src/main.asm`, `cdm-project.json`, a smoke suite, a build task, and an F5 profile for supported debuggers. Choose an existing folder or create a new folder, and select an application or a library. It shares both templates with `cdmbot create` and its `init` alias. Existing `main.asm` or `src/main.asm` files are preserved.
 
 ```json
 {
@@ -106,9 +106,17 @@ Choose **CocoVS Assembly** in **Change Language Mode** if another extension clai
 
 Use **CocoVS: Show Assembly Suggestions**, `Ctrl+Space`, or `Cmd+Shift+.` on macOS. Include completion suggests files and folders after `# @include "`. Hover and signature help work independently of live diagnostics.
 
+Installed packages also appear in include completion. Type `# @include "@` to choose a package, then select `lib.asm` or a specific `.mlb` source. For example, `# @include "@memoryze8/lib.asm"` loads the package's included macro libraries. Completion shows their signatures and documentation, and `Ctrl+Click` or F12 on the include path opens the installed source. Package and lock-file changes refresh library symbols and semantic highlighting.
+
 `Ctrl+Click` or F12 opens definitions, including imported ones. The editor provides an outline, include links, and semantic highlighting. In the default dark theme, labels are typically teal, control flow orange, macros and directives such as `run` purple, and other instructions yellow. Exact colors depend on the theme.
 
 Comments directly above a label or macro appear in hover documentation. Use `@param`, `@return` (or `@returns`), and `@changed` to describe arguments, results, and modified registers, flags, or memory. `Ctrl+Shift+Space` opens signature help.
+
+### Structure templates
+
+`tplate` defines a byte layout. `Person._` is its total size and `Person.age` is a field offset. For example, `name: ds 10`, `age: ds 1`, and `id: ds 3` occupy 14 bytes. Reserve a stack frame with `addsp -Person._` and release it with `addsp Person._`. A static instance uses `person: ds Person._`. Template declarations describe the layout, while these reservations allocate the storage.
+
+CocoVS completes qualified template members, opens their definitions with F12 and shows size or offset information on hover. Symbolic layouts are evaluated by CoCAS. CocoVS 0.9.3 and cdmbot 0.2.2 correct CoCAS 0.2.3 template handling in subtracted expressions and storage directives. CdM-16 word fields and stack frames require even addresses and sizes.
 
 ### Snippets and comparisons
 
@@ -187,7 +195,7 @@ Use **CocoVS: Debug via CdM Processors** for an external Logisim debugger; its l
 
 ## Automated tests
 
-cdmbot also provides project creation, builds, execution, source statistics, syntax analysis, and packages. Run **CocoVS: Install or Update cdmbot** to install the tool and enable its terminal command, then **Analyze Code with cdmbot**, **Create cdmbot Project**, or **Browse Assembly Packages**. See the [development-tool workflow](cdmbot-development.md). The Testing view supports legacy suites.
+cdmbot also provides project creation, builds, execution, source statistics, syntax analysis, and packages. Run **CocoVS: Install or Update cdmbot** to install the tool and enable its terminal command, then **Analyze Code with cdmbot**, **Create or Initialize Project**, or **Browse Assembly Packages**. See the [development-tool workflow](cdmbot-development.md). The Testing view supports legacy suites.
 
 CocoVS discovers cdmbot `project.yaml` / `project.yml` manifests with a `suites` section in **Testing**. Run a project, suite, or case, with links to YAML locations. **Project checks** reports structure, syntax, and coverage thresholds; coverage needs a full project run.
 
@@ -219,3 +227,5 @@ These scripts are placeholders for your assembler and circuit launcher. `${sourc
 ## Development and publishing
 
 For Node.js requirements, extension tests, VSIX packaging, and updating the existing Marketplace listing, see [development and publishing](development.md). Documentation-only changes do not require a version bump or new package.
+
+Application dependencies belong in the `dependencies` object of `cdm-project.json`. Restore automatically migrates an existing `cdm-packages.json` after validation, retaining the exact revisions in `cdm-packages.lock.json`. The `languageVersion` field selects the toolchain compatibility profile, currently `"1.0"`. See the [manifest and compatibility workflow](cdmbot-development.md#assembly-compatibility).

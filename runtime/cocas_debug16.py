@@ -2,6 +2,9 @@
 
 from cocas.assembler.targets import IVaryingLengthSegment
 from cocas.main import main
+from cocas_templates import install
+
+install()
 
 
 update_surroundings = IVaryingLengthSegment.update_surroundings
