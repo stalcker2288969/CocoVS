@@ -4,6 +4,7 @@ const vscode = acquireVsCodeApi();
 const table = document.getElementById('ram');
 const statusLine = document.getElementById('status');
 const cells = [];
+const rowHeaders = [];
 const watchFormat = document.getElementById('watch-format');
 const watchRows = document.getElementById('watch-rows');
 const watchTable = document.getElementById('watches');
@@ -32,7 +33,7 @@ let watchViews = [];
 let watchKey;
 let previous;
 let comparison;
-let page = 0;
+let page = preferences.page ?? 0;
 
 const hex = (value, width = 2) => value.toString(16).toUpperCase().padStart(width, '0');
 const bits = (value, width) => value.toString(2).padStart(width, '0');
@@ -112,28 +113,56 @@ function setColorPoint(event) {
   writeHexColor();
 }
 
-colorPlane.addEventListener('pointerdown', event => {
-  if (event.button !== 0) return;
-  colorPlane.setPointerCapture(event.pointerId);
-  setColorPoint(event);
-});
-colorPlane.addEventListener('pointermove', event => {
-  if (colorPlane.hasPointerCapture(event.pointerId)) setColorPoint(event);
-});
-colorPlane.addEventListener('keydown', event => {
-  const direction = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1]}[event.key];
-  if (!direction) return;
-  event.preventDefault();
-  const step = event.shiftKey ? 0.1 : 0.01;
-  draftColor.saturation = clampColor(draftColor.saturation + direction[0] * step);
-  draftColor.brightness = clampColor(draftColor.brightness + direction[1] * step);
-  writeHexColor();
-});
-colorHue.addEventListener('input', () => {
-  draftColor.hue = Number(colorHue.value);
-  writeHexColor();
-});
-colorInput.addEventListener('input', readHexColor);
+function setupColorPicker() {
+  colorPlane.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    colorPlane.setPointerCapture(event.pointerId);
+    setColorPoint(event);
+  });
+  colorPlane.addEventListener('pointermove', event => {
+    if (colorPlane.hasPointerCapture(event.pointerId)) setColorPoint(event);
+  });
+  colorPlane.addEventListener('keydown', event => {
+    const direction = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1]}[event.key];
+    if (!direction) return;
+    event.preventDefault();
+    const step = event.shiftKey ? 0.1 : 0.01;
+    draftColor.saturation = clampColor(draftColor.saturation + direction[0] * step);
+    draftColor.brightness = clampColor(draftColor.brightness + direction[1] * step);
+    writeHexColor();
+  });
+  colorHue.addEventListener('input', () => {
+    draftColor.hue = Number(colorHue.value);
+    writeHexColor();
+  });
+  colorInput.addEventListener('input', readHexColor);
+
+  const swatches = document.getElementById('color-swatches');
+  for (const [name, color] of [
+    ['Blue', '#569cd6'], ['Cyan', '#4ec9b0'], ['Green', '#6a9955'], ['Yellow', '#dcdcaa'],
+    ['Orange', '#ce9178'], ['Red', '#f44747'], ['Pink', '#d16d9e'], ['Purple', defaultStackColor],
+  ]) {
+    const button = append(swatches, 'button', '', 'color-swatch');
+    button.type = 'button';
+    button.title = name + ' ' + color;
+    button.setAttribute('aria-label', button.title);
+    button.style.setProperty('--swatch-color', color);
+    button.addEventListener('click', () => applyColor(color));
+  }
+  document.getElementById('color-form').addEventListener('submit', event => {
+    event.preventDefault();
+    const value = colorInput.value.trim();
+    if (/^#[0-9a-f]{6}$/i.test(value)) applyColor(value.toLowerCase());
+    else colorError.textContent = 'Enter a color like #569cd6.';
+  });
+  document.getElementById('color-reset').addEventListener('click', () => applyColor(null));
+  document.getElementById('color-cancel').addEventListener('click', () => colorDialog.close());
+  colorDialog.addEventListener('close', () => {
+    if (colorDialog.open) return;
+    if (colorSelection?.trigger?.isConnected) colorSelection.trigger.focus();
+    colorSelection = undefined;
+  });
+}
 
 function applyColor(color) {
   if (!colorSelection) return;
@@ -142,31 +171,7 @@ function applyColor(color) {
   colorDialog.close();
 }
 
-const swatches = document.getElementById('color-swatches');
-for (const [name, color] of [
-  ['Blue', '#569cd6'], ['Cyan', '#4ec9b0'], ['Green', '#6a9955'], ['Yellow', '#dcdcaa'],
-  ['Orange', '#ce9178'], ['Red', '#f44747'], ['Pink', '#d16d9e'], ['Purple', defaultStackColor],
-]) {
-  const button = append(swatches, 'button', '', 'color-swatch');
-  button.type = 'button';
-  button.title = name + ' ' + color;
-  button.setAttribute('aria-label', button.title);
-  button.style.setProperty('--swatch-color', color);
-  button.addEventListener('click', () => applyColor(color));
-}
-document.getElementById('color-form').addEventListener('submit', event => {
-  event.preventDefault();
-  const value = colorInput.value.trim();
-  if (/^#[0-9a-f]{6}$/i.test(value)) applyColor(value.toLowerCase());
-  else colorError.textContent = 'Enter a color like #569cd6.';
-});
-document.getElementById('color-reset').addEventListener('click', () => applyColor(null));
-document.getElementById('color-cancel').addEventListener('click', () => colorDialog.close());
-colorDialog.addEventListener('close', () => {
-  if (colorDialog.open) return;
-  if (colorSelection?.trigger?.isConnected) colorSelection.trigger.focus();
-  colorSelection = undefined;
-});
+if (colorDialog) setupColorPicker();
 
 function controlRegister(parent, name, className) {
   const card = append(parent, 'div', '', 'register-card');
@@ -176,17 +181,22 @@ function controlRegister(parent, name, className) {
   return {card, value};
 }
 
+function createControls(parent) {
+  const pc = controlRegister(parent, 'PC', 'pc');
+  const ps = controlRegister(parent, 'PS');
+  const sp = controlRegister(parent, 'SP', 'sp');
+  const flagList = append(ps.card, 'div', '', 'flags');
+  const flagElements = flags.map(([label, mask, title]) => {
+    const flag = append(flagList, 'span', '', 'flag');
+    flag.title = title;
+    append(flag, 'span', label);
+    return {flag, value: append(flag, 'code', '\u2014'), mask};
+  });
+  return {pc, ps, sp, flagElements};
+}
+
 const control = document.getElementById('control-registers');
-const pcRegister = controlRegister(control, 'PC', 'pc');
-const psRegister = controlRegister(control, 'PS');
-const spRegister = controlRegister(control, 'SP', 'sp');
-const flagList = append(psRegister.card, 'div', '', 'flags');
-const flagElements = flags.map(([label, mask, title]) => {
-  const flag = append(flagList, 'span', '', 'flag');
-  flag.title = title;
-  append(flag, 'span', label);
-  return {flag, value: append(flag, 'code', '\u2014'), mask};
-});
+const controls = control && createControls(control);
 
 const general = document.getElementById('general-registers');
 function createRegisterView(index) {
@@ -199,42 +209,45 @@ function createRegisterView(index) {
   });
   return {card, values};
 }
-const registerViews = Array.from({length: 4}, (_, index) => createRegisterView(index));
+const registerViews = general ? Array.from({length: 4}, (_, index) => createRegisterView(index)) : [];
 
-const head = table.createTHead().insertRow();
-head.appendChild(document.createElement('th'));
-for (let column = 0; column < 16; column++) {
-  const header = document.createElement('th');
-  header.scope = 'col';
-  header.textContent = column.toString(16).toUpperCase();
-  head.appendChild(header);
-}
-
-const body = table.createTBody();
-const rowHeaders = [];
-for (let row = 0; row < 16; row++) {
-  const line = body.insertRow();
-  const header = document.createElement('th');
-  header.scope = 'row';
-  header.textContent = hex(row * 16);
-  rowHeaders.push(header);
-  line.appendChild(header);
+function createMemoryTable() {
+  const head = table.createTHead().insertRow();
+  head.appendChild(document.createElement('th'));
   for (let column = 0; column < 16; column++) {
-    const cell = line.insertCell();
-    cell.textContent = '\u00b7\u00b7';
-    cells.push(cell);
+    const header = document.createElement('th');
+    header.scope = 'col';
+    header.textContent = column.toString(16).toUpperCase();
+    head.appendChild(header);
+  }
+
+  const body = table.createTBody();
+  for (let row = 0; row < 16; row++) {
+    const line = body.insertRow();
+    const header = document.createElement('th');
+    header.scope = 'row';
+    header.textContent = hex(row * 16);
+    rowHeaders.push(header);
+    line.appendChild(header);
+    for (let column = 0; column < 16; column++) {
+      const cell = line.insertCell();
+      cell.textContent = '\u00b7\u00b7';
+      cells.push(cell);
+    }
   }
 }
+
+if (table) createMemoryTable();
 
 function updateRegisters({pc, sp, ps, registers}, before) {
   const width = registers.length === 8 ? 4 : 2;
   while (registerViews.length < registers.length) registerViews.push(createRegisterView(registerViews.length));
   registerViews.forEach((view, index) => { view.card.hidden = index >= registers.length; });
-  for (const [view, value, prior] of [[pcRegister, pc, before?.pc], [spRegister, sp, before?.sp], [psRegister, ps, before?.ps]]) {
+  for (const [view, value, prior] of [[controls.pc, pc, before?.pc], [controls.sp, sp, before?.sp], [controls.ps, ps, before?.ps]]) {
     view.value.textContent = '0x' + hex(value, width);
     view.card.classList.toggle('changed', prior !== undefined && prior !== value);
   }
-  for (const {flag, value, mask} of flagElements) {
+  for (const {flag, value, mask} of controls.flagElements) {
     const set = (ps & mask) !== 0;
     value.textContent = set ? '1' : '0';
     flag.classList.toggle('flag-set', set);
@@ -408,20 +421,25 @@ function renderRam(snapshot, before) {
 function changePage(address) {
   if (!previous || previous.target !== 'cdm16') return;
   page = Math.floor(Math.min(65535, Math.max(0, address)) / 256) * 256;
+  storeView();
   if (ramAddress) ramAddress.value = '0x' + hex(page, 4);
   renderRam(previous, comparison);
 }
 
 function storeView() {
-  vscode.setState?.({watchOpen: watchSection.open, ramOpen: ramSection?.open ?? true});
+  vscode.setState?.({watchOpen: watchSection?.open, watchQuery: watchSearch?.value, watchFormat: watchFormat?.value,
+    ramOpen: ramSection?.open, page, session: previous?.session ?? preferences.session});
 }
 if (ramSection) ramSection.open = preferences.ramOpen !== false;
 ramSection?.addEventListener('toggle', () => { storeView(); if (previous) renderRam(previous, comparison); });
-const refreshWatches = () => { if (previous) updateWatches(previous, comparison); };
+const refreshWatches = () => { storeView(); if (previous) updateWatches(previous, comparison); };
+if (watchFormat && preferences.watchFormat) watchFormat.value = preferences.watchFormat;
+if (watchSearch && preferences.watchQuery) watchSearch.value = preferences.watchQuery;
 watchFormat?.addEventListener('change', refreshWatches);
 watchSearch?.addEventListener('input', refreshWatches);
-watchSection.open = preferences.watchOpen ?? !preferences.hideUnpinned;
-watchSection.addEventListener('toggle', () => { storeView(); refreshWatches(); });
+if (watchSection) watchSection.open = preferences.watchOpen ?? !preferences.hideUnpinned;
+watchSection?.addEventListener('toggle', refreshWatches);
+document.getElementById('split-view')?.addEventListener('click', () => vscode.postMessage({type: 'split'}));
 document.getElementById('ram-prev')?.addEventListener('click', () => changePage(page - 256));
 document.getElementById('ram-next')?.addEventListener('click', () => changePage(page + 256));
 ramAddress?.addEventListener('change', () => {
@@ -440,29 +458,31 @@ window.addEventListener('message', ({data}) => {
   const size = wide ? 65536 : 256;
   const {ram, pc, sp, ps, registers, steps, architecture} = snapshot;
   const valid = wide ? value => Number.isInteger(value) && value >= 0 && value < size : isByte;
-  if (typeof ram !== 'string' || ram.length !== size * 2 || !/^[\da-f]+$/i.test(ram) || ![pc, sp, ps].every(valid) ||
+  if ((table || watchRows) && (typeof ram !== 'string' || ram.length !== size * 2 || !/^[\da-f]+$/i.test(ram))) return;
+  if (![pc, sp, ps].every(valid) ||
       !Array.isArray(registers) || registers.length !== (wide ? 8 : 4) || !registers.every(valid)) return;
 
   const before = previous?.session === snapshot.session ? previous : undefined;
   if (!before) {
-    page = 0;
+    if (!wide || (previous?.session ?? preferences.session) !== snapshot.session) page = 0;
     collapsed.clear();
   }
   const changed = !before || steps !== before.steps || ram !== before.ram;
   if (changed) comparison = before;
-  if (!before || steps !== before.steps || pc !== before.pc || sp !== before.sp || ps !== before.ps ||
-      registers.some((value, index) => value !== before.registers[index])) updateRegisters(snapshot, before);
+  if (controls && (!before || steps !== before.steps || pc !== before.pc || sp !== before.sp || ps !== before.ps ||
+      registers.some((value, index) => value !== before.registers[index]))) updateRegisters(snapshot, before);
 
   pinned = new Set(data.pinned ?? []);
   const nextPalette = data.colors ?? {labels: {}};
   const recolored = JSON.stringify(nextPalette) !== JSON.stringify(palette);
   palette = nextPalette;
   if (stackPicker) stackPicker.style.setProperty('--swatch-color', palette.stack ?? defaultStackColor);
-  if (colorDialog.open && colorSelection?.session !== snapshot.session) colorDialog.close();
-  if (changed || recolored || pc !== before?.pc || sp !== before?.sp || snapshot.stackBytes !== before?.stackBytes) {
+  if (colorDialog?.open && colorSelection?.session !== snapshot.session) colorDialog.close();
+  if (table && (changed || recolored || pc !== before?.pc || sp !== before?.sp || snapshot.stackBytes !== before?.stackBytes)) {
     renderRam(snapshot, comparison);
   }
   previous = snapshot;
+  if (!before && table) storeView();
   updateWatches(snapshot, comparison);
   if (processor) processor.textContent = wide ? 'CdM-16' : 'CdM-8';
   const state = {paused: 'Paused', running: 'Running', ended: 'Ended'}[snapshot.status];

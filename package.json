@@ -2,7 +2,7 @@
   "name": "cdm-project-tools",
   "displayName": "CocoVS — CdM Assembly",
   "description": "CdM-8 and CdM-16 assembly editing, CoCAS builds, debugging and RAM inspection for Coco-de-Mer processors",
-  "version": "0.9.5",
+  "version": "0.9.8",
   "publisher": "cdm-project-community",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -199,6 +199,16 @@
         "title": "Open RAM View",
         "category": "CocoVS",
         "icon": "$(file-binary)"
+      },
+      {
+        "command": "cocovs.splitMemory",
+        "title": "Split RAM View into Tabs",
+        "category": "CocoVS"
+      },
+      {
+        "command": "cocovs.openMemoryPanel",
+        "title": "Open Debug Panel...",
+        "category": "CocoVS"
       }
     ],
     "viewsWelcome": [
@@ -581,7 +591,7 @@
           "type": "boolean",
           "default": true,
           "scope": "resource",
-          "description": "Open the CdM-8 RAM panel beside the source when debugging starts."
+          "description": "Open the combined RAM view on the first local debug stop when no CocoVS debug panels are open."
         },
         "cocovs.maxSteps": {
           "type": "integer",
@@ -639,7 +649,7 @@
     }
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test \"test/*.test.js\"",
     "test:host": "node test-host/run.js",
     "package": "vsce package --no-dependencies"
   },

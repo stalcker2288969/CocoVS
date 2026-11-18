@@ -35,6 +35,7 @@ jobs:
           import os
           import subprocess
           import sys
+          import sysconfig
           from pathlib import Path
 
           manifest = json.loads(Path('package.json').read_text(encoding='utf-8'))
@@ -47,9 +48,13 @@ jobs:
 
           import cdmbot
           registry = Path(cdmbot.__file__).parent / 'data' / 'registry'
+          cocas = Path(sysconfig.get_path('scripts')) / ('cocas.exe' if os.name == 'nt' else 'cocas')
+          if not cocas.is_file():
+              raise SystemExit(f'Missing CoCAS launcher: {cocas}')
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
               output.write(f'COCOVS_PYTHON={sys.executable}\n')
               output.write(f'COCOVS_CDMBOT_DEVELOPMENT_PYTHON={sys.executable}\n')
+              output.write(f'COCOVS_PIP_COCAS={cocas}\n')
               output.write(f'CDMBOT_REGISTRY={registry}\n')
           PY
       - run: npm test

@@ -49,7 +49,7 @@ test('editor completes includes and imported symbols, colors references and navi
       appendMarkdown(value) { this.value += value; }
       appendCodeblock(value) { this.value += value; }
     },
-    Hover: class { constructor(contents) { this.contents = contents; } },
+    Hover: class { constructor(contents, range) { this.contents = contents; this.range = range; } },
     SignatureHelp: class {},
     SignatureInformation: class { constructor(label, documentation) { this.label = label; this.documentation = documentation; } },
     ParameterInformation: class { constructor(label, documentation) { this.label = label; this.documentation = documentation; } },
@@ -215,6 +215,21 @@ test('editor completes includes and imported symbols, colors references and navi
   }
 
   const hover = providers.registerHoverProvider;
+  for (const [literal, value] of [['0b00000', '0'], ['0b00101', '5'], ['0x00FF', '255'], ['0x20000000000001', '9007199254740993']]) {
+    const line = '    dc ' + literal + ', 0b0';
+    const start = line.indexOf(literal);
+    for (const column of [start, start + literal.length - 1]) {
+      const result = await hover.provideHover(document(main, line), new Position(0, column), token);
+      assert.ok(result?.contents[0].value.includes(literal + ' = ' + value));
+      assert.deepEqual(result.range, new Range(0, start, 0, start + literal.length));
+    }
+    assert.equal(await hover.provideHover(document(main, line), new Position(0, start + literal.length), token), undefined);
+  }
+  for (const sample of ['    dc "0xFF"', "    dc '0xFF'", '    dc 1 # 0xFF', '    dc label0xFF', '    dc Label.0xFF',
+    '    dc 0xFFg', '    dc 0b012', '    dc 0XFF']) {
+    const column = sample.search(/0[xb]/i);
+    assert.equal(await hover.provideHover(document(main, sample), new Position(0, column + 2), token), undefined, sample);
+  }
   const documented = document(main, '# @param r0 Input\n# @return r1 Result\n# @changed PS Flags\nroutine:\n    rts');
   const details = await hover.provideHover(documented, new Position(3, 1), token);
   assert.match(details.contents[0].value, /Inputs[\s\S]*r0 Input|Inputs[\s\S]*r0 - Input/);

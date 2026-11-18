@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vscode = require('vscode');
 const {ASSEMBLY, MANIFEST, confined, inferTarget, loadProject, locateProject, resolveSources, sourceDirective, includePath} = require('./project');
-const {branchTargets, colorTokens, completionContext, indexSymbols, operationAt, sourceLine, symbolAt} = require('./symbols');
+const {branchTargets, colorTokens, completionContext, indexSymbols, operationAt, radixLiteralAt, sourceLine, symbolAt} = require('./symbols');
 const {externalInsertionLine, includeCandidates, includeContext} = require('./editor-support');
 const instructionSets = require('./instructions.json');
 const {callAt, instructionSignatures, signature} = require('./signatures');
@@ -407,11 +407,20 @@ function registerEditor(context, liveDiagnostics) {
       }
     }),
     vscode.languages.registerHoverProvider(SELECTOR, {async provideHover(document, position, token) {
+      const {line, character} = position;
+      const text = document.lineAt(line).text;
+      const literal = radixLiteralAt(text, character);
+      if (literal) {
+        const markdown = new vscode.MarkdownString();
+        const title = /^ru(?:-|$)/i.test(vscode.env?.language ?? '') ? 'Десятичное значение' : 'Decimal value';
+        markdown.appendMarkdown('**' + title + '**\n\n');
+        markdown.appendCodeblock(literal.text + ' = ' + BigInt(literal.text).toString(10));
+        return new vscode.Hover([markdown], new vscode.Range(line, literal.start, line, literal.end));
+      }
       const symbols = await lookup(document, position, token);
       if (!symbols.length) {
-        const line = document.lineAt(position.line).text;
-        const op = operationAt(sourceLine(line));
-        if (!op || position.character < op.column || position.character >= op.end) return undefined;
+        const op = operationAt(sourceLine(text));
+        if (!op || character < op.column || character >= op.end) return undefined;
         const instructions = instructionSignatures(projectInfo(document).target, op.name);
         if (!instructions.length) return undefined;
         const [first] = instructions;

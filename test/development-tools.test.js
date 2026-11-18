@@ -6,6 +6,8 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const {createHash} = require('node:crypto');
+const {createRequire} = require('node:module');
+const vm = require('node:vm');
 const {cdmbotManager, managedCdmbotPython} = require('../src/development-tools');
 const {resolveSources, loadProject, projectDependencies, verifyPackages} = require('../src/project');
 const {build} = require('../src/build');
@@ -20,6 +22,62 @@ async function fixture(t) {
   t.after(() => fs.rm(root, {recursive: true, force: true}));
   return root;
 }
+
+test('restoring packages keeps the original standalone file when tool discovery switches editors', async t => {
+  const root = await fixture(t);
+  const loose = path.join(root, 'loose');
+  const other = path.join(root, 'open-workspace');
+  await fs.mkdir(loose);
+  await fs.mkdir(other);
+  const source = path.join(loose, 'sample.cdm16.asm');
+  const document = fileName => ({fileName, uri: {scheme: 'file', fsPath: fileName}, languageId: 'cocovs-assembly'});
+  const commands = new Map();
+  const errors = [];
+  const window = {activeTextEditor: {document: document(source)}};
+  const folder = {uri: {scheme: 'file', fsPath: other}};
+  const api = {
+    window,
+    workspace: {isTrusted: true, workspaceFolders: [folder], saveAll: async () => true,
+      getWorkspaceFolder: uri => path.dirname(uri.fsPath) === other ? folder : undefined,
+      getConfiguration: () => ({get: key => key === 'cdmbotPythonPath' ? 'test-python' : undefined})},
+    EventEmitter: class {},
+    commands: {registerCommand: (name, callback) => commands.set(name, callback)},
+  };
+  const file = path.resolve(__dirname, '../src/development-tools.js');
+  const requireModule = createRequire(file);
+  const moduleForTest = {exports: {}};
+  const sourceCode = await fs.readFile(file, 'utf8');
+  let invocation;
+  const replacements = {
+    './tools': {...requireModule('./tools'), async processResult() {
+      window.activeTextEditor.document = document(path.join(other, 'other.cdm8.asm'));
+      return {code: 0, stdout: JSON.stringify({api: 1, automatic_packages: true, template_constants: true,
+        unified_manifest: true, language_versions: ['1.0'], commands: []})};
+    }},
+    './cdmbot': {async jsonResult(_python, args) { invocation = args; return {report: {passed: true}}; }},
+  };
+  vm.runInThisContext('(function(require, module) {' + sourceCode + '\n})', {filename: file})(
+    name => replacements[name] ?? requireModule(name), moduleForTest);
+  moduleForTest.exports.registerDevelopment({subscriptions: [], globalState: {get() {}}}, api, {},
+    {show() {}, appendLine() {}}, error => errors.push(error.message));
+  await commands.get('cocovs.getPackages')();
+  assert.deepEqual(errors, []);
+  assert.deepEqual(invocation, ['-m', 'cdmbot', 'pub', 'get', '--path', source, '--workspace', loose, '--target', 'cdm16', '--json']);
+});
+
+test('project initialization can recover from a template path occupied by a directory', async t => {
+  const root = await fixture(t);
+  const testSuite = path.join(root, 'tests.yaml');
+  await fs.mkdir(testSuite);
+  await assert.rejects(initializeProject(root, 'cdm8'));
+  const manifest = path.join(root, 'cdm-project.json');
+  await assert.rejects(fs.access(manifest), {code: 'ENOENT'});
+  await fs.rmdir(testSuite);
+  const config = await initializeProject(root, 'cdm8');
+  assert.equal(JSON.parse(await fs.readFile(manifest, 'utf8')).entry, config.entry);
+  assert.match(await fs.readFile(path.join(root, config.entry), 'utf8'), /halt/);
+  assert.ok((await fs.stat(testSuite)).isFile());
+});
 
 test('managed cdmbot installation is isolated, capability checked, and preserves the working environment on failure', async t => {
   const root = await fixture(t);

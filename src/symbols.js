@@ -195,5 +195,13 @@ function symbolAt(line, column) {
   return undefined;
 }
 
+function radixLiteralAt(line, column) {
+  const literals = /(?<![\w.])(?:0b[01]+|0x[\da-fA-F]+)(?![\w.])/g;
+  for (const {0: text, index} of sourceLine(line).matchAll(literals)) {
+    if (index <= column && column < index + text.length) return {text, start: index, end: index + text.length};
+  }
+  return undefined;
+}
+
 module.exports = {branchTargets, branches, colorTokens, completionContext, controlFlow, indexSymbols,
-  operandList, operationAt, sourceLine, symbolAt};
+  operandList, operationAt, radixLiteralAt, sourceLine, symbolAt};

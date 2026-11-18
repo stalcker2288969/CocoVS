@@ -6,7 +6,8 @@ body {
   background: var(--vscode-editor-background);
   font: 13px var(--vscode-font-family);
 }
-header { margin-bottom: 12px; }
+header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+#split-view { white-space: nowrap; }
 h1 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
 p { margin: 0; color: var(--vscode-descriptionForeground); }
 h2 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
@@ -42,6 +43,9 @@ h2 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
 .register-formats dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
 @media (max-width: 490px) {
   .general-registers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 280px) {
+  .control-registers, .general-registers { grid-template-columns: minmax(0, 1fr); }
 }
 .watches { margin-bottom: 18px; }
 .watch-tools label { align-self: center; white-space: nowrap; }

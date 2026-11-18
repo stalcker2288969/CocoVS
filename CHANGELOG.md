@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.8
+
+- Show the exact decimal value when hovering over a binary or hexadecimal literal in assembly source.
+
+## 0.9.7
+
+- Split the RAM view into movable Registers, Data Labels, and Memory Grid tabs that follow the active CocoVS debug session.
+- Keep the RAM address and data label filter and format when VS Code recreates a panel's content.
+
+## 0.9.6
+
+- Clean up the emulator if debugging ends during startup.
+- Keep package and analysis commands associated with the original file, including files outside the workspace.
+- Allow project initialization to be retried if writing a template file fails.
+- Run only the repository test suite, excluding build output and local checkouts.
+- Exercise live CoCAS diagnostics in the VS Code Extension Host on all CI platforms.
+
 ## 0.9.5
 
 - Store application dependencies in cdm-project.json and migrate legacy dependency manifests after a successful restore.

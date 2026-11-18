@@ -23,23 +23,25 @@ async function initializeProject(root, target, architecture = 'vonNeumann', {lib
     config.assembler = {command: './tools/assembler', args: ['-o', '${image}', '${sources}']};
     config.instructions = [];
   }
-  const files = {[library ? 'cdm-package.json' : 'cdm-project.json']: JSON.stringify(config, null, 2) + '\n',
-    'README.md': library ? '# ' + path.basename(root) + '\n\nAssembly library. Declare public files and dependencies in cdm-package.json.\n' :
+  const files = {'README.md': library ? '# ' + path.basename(root) + '\n\nAssembly library. Declare public files and dependencies in cdm-package.json.\n' :
       template.readme.replaceAll('{{name}}', path.basename(root)), '.gitignore': template.gitignore};
   if (library) files['lib.asm'] = template.librarySource;
   if (!library && !existingEntry) {
-    files[entry] = template.sources[target];
     if (['cdm8', 'cdm16'].includes(target)) {
       files['project.yaml'] = template.testProject;
       files['tests.yaml'] = template.testSuite.replaceAll('{{target}}', target)
         .replaceAll('{{memory}}', architecture === 'vonNeumann' ? 'unified' : 'harvard');
     }
+    files[entry] = template.sources[target];
   }
+  // An existing manifest marks a completed initialization on the next attempt.
+  const manifest = library ? 'cdm-package.json' : 'cdm-project.json';
+  files[manifest] = JSON.stringify(config, null, 2) + '\n';
   for (const [name, content] of Object.entries(files)) {
     const destination = path.join(root, name);
     await fs.mkdir(path.dirname(destination), {recursive: true});
-    await fs.writeFile(destination, content, {flag: 'wx'}).catch(error => {
-      if (error.code !== 'EEXIST') throw error;
+    await fs.writeFile(destination, content, {flag: 'wx'}).catch(async error => {
+      if (error.code !== 'EEXIST' || !await exists(name)) throw error;
     });
   }
   return config;

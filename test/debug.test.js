@@ -15,6 +15,32 @@ const {decodeImage} = require('../src/runtime');
 
 const env = process.env;
 
+test('disconnect during launch disposes the worker as soon as it becomes available', async t => {
+  const root = await fs.mkdtemp(path.join(env.COCOVS_TEST_TEMP ?? os.tmpdir(), 'cocovs-debug-stop-'));
+  t.after(() => fs.rm(root, {recursive: true, force: true}));
+  const artifacts = {image: path.join(root, 'out.img'), debug: path.join(root, 'out.dbg.json')};
+  await fs.writeFile(artifacts.image, 'v2.0 raw\n00\n');
+  await fs.writeFile(artifacts.debug, JSON.stringify({files: [], codeLocations: {}}));
+  const workerRequested = Promise.withResolvers();
+  const workerReady = Promise.withResolvers();
+  const messages = [];
+  const adapter = new DebugAdapter(message => messages.push(message), () => {
+    workerRequested.resolve();
+    return workerReady.promise;
+  });
+  t.after(() => adapter.dispose());
+  const launch = adapter.handleMessage({type: 'request', command: 'launch', seq: 1,
+    arguments: {root, artifacts, architecture: 'vonNeumann'}});
+  await workerRequested.promise;
+  await adapter.handleMessage({type: 'request', command: 'disconnect', seq: 2});
+  let disposals = 0;
+  workerReady.resolve({request() { assert.fail('The disconnected worker must not start.'); }, dispose() { disposals++; }});
+  await launch;
+  assert.equal(disposals, 1);
+  assert.deepEqual(messages.filter(message => message.type === 'event').map(message => message.event), ['terminated']);
+  assert.equal(messages.find(message => message.request_seq === 1)?.success, false);
+});
+
 test('CdM-8 DAP handles real CoCAS breakpoints, source steps, RAM and subroutine frames', {
   skip: env.COCOVS_INTEGRATION !== '1',
 }, async t => {

@@ -172,6 +172,8 @@ For CdM-8/CdM-16, use F5, **CocoVS: Debug**, or the entry-point CodeLens. Select
 
 **CocoVS RAM** opens at the first stop with registers, flags, and memory. Changed bytes are highlighted. Click the **RAM** heading to collapse the table. On CdM-16, **Address** selects a 256-byte page. Open it manually with **CocoVS: Open RAM View**; `cocovs.openMemoryOnDebug` controls automatic opening.
 
+Click **Split into tabs** in **CocoVS RAM**, or run **CocoVS: Split RAM View into Tabs**, to open **Registers**, **Data Labels**, and **Memory Grid** as separate editor tabs. Drag a tab into another editor group or, in VS Code 1.88 or later, outside the window to put it on another monitor. The tabs follow the active CocoVS debug session. Run **CocoVS: Open Debug Panel...** to reopen an individual tab or **CocoVS: Open RAM View** for the combined view.
+
 In **Data labels**, search by name, directive (`dc`, `ds`, `db`, `dw`), or type. Pin labels to keep them visible; the triangle beside a value collapses an unpinned label. The **Type** column and tooltip show type, directive, and byte length. Each label has an action to open its declaration and a palette to color its memory. **Stack color** controls the stack pointer and active stack region. Colors are remembered for the project. In Harvard mode, ROM labels do not color RAM bytes.
 
 A comment above a declaration selects its **Auto** display type:

@@ -5,8 +5,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const {createRequire} = require('node:module');
 
-test('RAM view lays out 256 cells and marks modified bytes and processor pointers', () => {
+function webview(html, savedPreferences) {
   const cells = [];
   const headers = [];
   let rows = 0;
@@ -39,7 +40,7 @@ test('RAM view lays out 256 cells and marks modified bytes and processor pointer
   const general = element();
   const watchRows = element();
   watchRows.replaceChildren = () => { watchRows.children.length = 0; };
-  const watchFormat = {value: 'auto', addEventListener() {}};
+  const watchFormat = {...element(), value: 'auto'};
   const watchTable = {};
   const watchEmpty = {};
   const search = {...element(), value: ''};
@@ -60,24 +61,38 @@ test('RAM view lays out 256 cells and marks modified bytes and processor pointer
   const colorSwatches = element();
   const colorReset = element();
   const colorError = element();
+  const splitButton = element();
   const sent = [];
   let handle;
+  let preferences = savedPreferences;
+  const ids = html && new Set(Array.from(html.matchAll(/\bid="([^"]+)"/g), match => match[1]));
+  const elements = {ram: table, status, 'control-registers': control, 'general-registers': general,
+    'watch-rows': watchRows, 'watch-format': watchFormat, watches: watchTable, 'watch-empty': watchEmpty,
+    'watch-search': search, 'watch-section': watchSection, 'ram-section': ramSection, 'ram-address': ramAddress,
+    'color-dialog': colorDialog, 'color-value': colorValue, 'color-title': colorTitle, 'color-form': colorForm,
+    'color-error': colorError, 'color-swatches': colorSwatches, 'color-reset': colorReset,
+    'color-cancel': element(), 'stack-color': stackPicker, 'split-view': splitButton,
+    'color-plane': colorPlane, 'color-hue': colorHue, 'color-preview': colorPreview};
   const script = fs.readFileSync(path.join(__dirname, '../media/memory.js'), 'utf8');
   vm.runInNewContext(script, {
     TextDecoder,
-    acquireVsCodeApi: () => ({postMessage: message => sent.push(message)}),
+    acquireVsCodeApi: () => ({postMessage: message => sent.push(message),
+      getState: () => preferences, setState: value => { preferences = value; }}),
     document: {
-      getElementById: id => ({ram: table, status, 'control-registers': control, 'general-registers': general,
-        'watch-rows': watchRows, 'watch-format': watchFormat, watches: watchTable, 'watch-empty': watchEmpty,
-        'watch-search': search, 'watch-section': watchSection, 'ram-section': ramSection, 'ram-address': ramAddress,
-        'color-dialog': colorDialog, 'color-value': colorValue, 'color-title': colorTitle, 'color-form': colorForm,
-        'color-error': colorError, 'color-swatches': colorSwatches, 'color-reset': colorReset,
-        'color-cancel': element(), 'stack-color': stackPicker,
-        'color-plane': colorPlane, 'color-hue': colorHue, 'color-preview': colorPreview})[id],
+      getElementById: id => !ids || ids.has(id) ? elements[id] : undefined,
       createElement: element,
     },
     window: {addEventListener: (_event, listener) => { handle = listener; }},
   });
+  return {cells, headers, rows, control, general, watchRows, search, watchSection, watchFormat, ramSection, ramAddress,
+    stackPicker, status, colorDialog, colorForm, colorHue, colorPlane, colorTitle, colorValue, colorError, colorReset,
+    colorSwatches, splitButton, sent, receive: data => handle({data}), getState: () => preferences};
+}
+
+test('RAM view lays out 256 cells and marks modified bytes and processor pointers', () => {
+  const {cells, headers, rows, control, general, watchRows, search, watchSection, ramSection, ramAddress, stackPicker,
+    status, colorDialog, colorForm, colorHue, colorPlane, colorTitle, colorValue, colorError, colorReset, colorSwatches,
+    sent, receive} = webview();
   assert.equal(sent[0].type, 'ready');
   assert.equal(rows, 16);
   assert.equal(cells.length, 256);
@@ -91,7 +106,7 @@ test('RAM view lays out 256 cells and marks modified bytes and processor pointer
   const formats = index => general.children[index].children[1].children
     .filter((_element, index) => index % 2 === 1).map(element => element.textContent);
   const flags = () => control.children[1].children[2].children.map(flag => flag.children[1].textContent);
-  const render = (snapshot, pinned, colors) => handle({data: {type: 'memory', snapshot, pinned, colors}});
+  const render = (snapshot, pinned, colors) => receive({type: 'memory', snapshot, pinned, colors});
   render(first);
   assert.ok(cells[0].classes.has('pc'));
   assert.ok(cells[255].classes.has('sp'));
@@ -224,4 +239,112 @@ test('RAM view lays out 256 cells and marks modified bytes and processor pointer
   assert.ok(cells[2].classes.has('stack-byte'));
   assert.ok(!cells[2].classes.has('colored-label'));
   assert.ok(!cells[3].classes.has('stack-byte'));
+});
+
+test('split debug panels share snapshots and colors and restore their own controls when moved', async () => {
+  const commands = new Map();
+  const panels = new Map();
+  const storage = new Map();
+  const disposables = {dispose() {}};
+  let activateSession;
+  const api = {
+    Uri: {joinPath: path.join}, ViewColumn: {Beside: -2},
+    commands: {registerCommand: (name, action) => { commands.set(name, action); return disposables; }},
+    workspace: {getConfiguration: () => ({get: () => true})},
+    debug: {
+      onDidChangeActiveDebugSession: action => { activateSession = action; return disposables; },
+      onDidTerminateDebugSession: () => disposables,
+    },
+    window: {
+      showQuickPick: async items => items.find(item => item.kind === 'labels'),
+      showErrorMessage: message => assert.fail(message),
+      createWebviewPanel(type, _title, {viewColumn}) {
+        assert.ok(!panels.has(type), type + ' opened twice');
+        const posted = [];
+        const panel = {posted, viewColumn: viewColumn === -2 ? 2 : viewColumn, visible: true,
+          webview: {asWebviewUri: uri => uri, cspSource: 'test', postMessage: message => posted.push(message),
+            onDidReceiveMessage: action => { panel.receive = action; return disposables; }},
+          onDidChangeViewState: action => { panel.viewChanged = action; return disposables; },
+          onDidDispose: action => { panel.onDispose = action; return disposables; },
+          reveal(column) { assert.equal(column, undefined); panel.visible = true; },
+          dispose() { panels.delete(type); panel.onDispose(); },
+        };
+        panels.set(type, panel);
+        return panel;
+      },
+    },
+  };
+  const file = path.join(__dirname, '../src/memory-view.js');
+  const localRequire = createRequire(file);
+  const compiled = vm.runInThisContext('(function(require, module) {' + fs.readFileSync(file, 'utf8') + '\n})');
+  const loaded = {exports: {}};
+  compiled(name => name === 'vscode' ? api : localRequire(name), loaded);
+  const context = {extensionUri: __dirname, subscriptions: [], workspaceState: {
+    get: (key, fallback) => storage.get(key) ?? fallback, update: async (key, value) => storage.set(key, value),
+  }};
+  const update = loaded.exports.memoryView(context);
+  const session = {id: 'one'};
+  api.debug.activeDebugSession = session;
+  const label = {name: 'answer', file: 'main.asm', address: 512, length: 1, kind: 'ds', dataType: 'u8'};
+  const snapshot = {root: 'project', target: 'cdm16', pc: 512, sp: 65535, ps: 0, registers: [42, 0, 0, 0, 0, 0, 0, 0],
+    steps: 1, architecture: 'vonNeumann', status: 'paused', dataLabels: [label],
+    ram: '00'.repeat(512) + '2a' + '00'.repeat(65536 - 513)};
+  update(session, snapshot);
+  const overview = panels.get('cocovsMemory');
+  const combinedUi = webview(overview.webview.html);
+  combinedUi.splitButton.fire('click');
+  overview.receive(combinedUi.sent.at(-1));
+  assert.deepEqual([...panels.keys()], ['cocovsMemory.registers', 'cocovsMemory.labels', 'cocovsMemory.ram']);
+  const [registers, labels, ram] = panels.values();
+  assert.ok([registers, labels, ram].every(panel => panel.viewColumn === overview.viewColumn));
+  ram.viewColumn = 4;
+  commands.get('cocovs.splitMemory')();
+  assert.equal(ram.viewColumn, 4);
+
+  const mount = (panel, state) => {
+    const ui = webview(panel.webview.html, state);
+    panel.receive(ui.sent[0]);
+    ui.receive(panel.posted.at(-1));
+    return ui;
+  };
+  const registersUi = mount(registers);
+  assert.equal(registersUi.general.children.length, 8);
+  assert.equal(registersUi.cells.length, 0);
+  assert.equal(registers.posted.at(-1).snapshot.ram, undefined);
+  assert.equal(registersUi.control.children[0].children[1].textContent, '0x0200');
+  const labelsUi = mount(labels);
+  assert.equal(labelsUi.general.children.length, 0);
+  assert.equal(labelsUi.watchRows.children[0].children[0].textContent, 'answer');
+  const ramUi = mount(ram);
+  assert.equal(ramUi.watchRows.children.length, 0);
+  ramUi.ramAddress.value = '0x0200';
+  ramUi.ramAddress.fire('change');
+  assert.equal(mount(ram, ramUi.getState()).cells[0].textContent, '2A');
+  labelsUi.search.value = 'missing';
+  labelsUi.search.fire('input');
+  labelsUi.watchFormat.value = 'hex';
+  labelsUi.watchFormat.fire('change');
+  const movedLabelsUi = mount(labels, labelsUi.getState());
+  assert.equal(movedLabelsUi.watchFormat.value, 'hex');
+  assert.equal(movedLabelsUi.watchRows.children.length, 0);
+  const key = JSON.stringify(['main.asm', 'answer']);
+  labels.receive({type: 'pin', session: session.id, key, pinned: true});
+  labels.receive({type: 'color', session: session.id, key, color: '#abcdef'});
+  assert.deepEqual([...ram.posted.at(-1).pinned], [key]);
+  assert.equal(ram.posted.at(-1).colors.labels[key], '#abcdef');
+  await new Promise(resolve => setImmediate(resolve));
+
+  const second = {id: 'two'};
+  update(second, {...snapshot, pc: 0});
+  assert.equal(ram.posted.at(-1).snapshot.session, 'one');
+  api.debug.activeDebugSession = second;
+  activateSession();
+  assert.ok([...panels.values()].every(panel => panel.posted.at(-1).snapshot.session === 'two'));
+  assert.equal(mount(ram, ramUi.getState()).ramAddress.value, '0x0000');
+  assert.equal(panels.size, 3);
+  labels.dispose();
+  await commands.get('cocovs.openMemoryPanel')();
+  assert.strictEqual(panels.get('cocovsMemory.ram'), ram);
+  assert.ok(panels.has('cocovsMemory.labels'));
+  assert.equal(panels.size, 3);
 });

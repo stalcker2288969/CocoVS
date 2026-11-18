@@ -102,29 +102,32 @@ function registerDevelopment(context, vscode, toolchain, output, showError) {
   }
   function current(packages = false) {
     const document = vscode.window.activeTextEditor?.document;
-    const folder = (document && vscode.workspace.getWorkspaceFolder(document.uri)) ?? vscode.workspace.workspaceFolders?.[0];
     if (document?.uri.scheme === 'file') {
-      const boundary = folder?.uri.fsPath ?? path.dirname(document.fileName);
+      const boundary = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath ?? path.dirname(document.fileName);
       const project = locateProject(document.fileName, boundary);
       const library = packages && locateProject(document.fileName, boundary, 'cdm-package.json');
-      return project ?? library ?? document.fileName;
-    }
-    if (folder?.uri.scheme === 'file') return folder.uri.fsPath;
-    throw new Error('Open a saved assembly file or local project folder.');
-  }
-  async function invoke(args) {
-    const python = await ensure();
-    if (!python) return undefined;
-    const document = vscode.window.activeTextEditor?.document;
-    const location = args[0] === 'pub' ? args[args.indexOf('--path') + 1] : args[1];
-    if (document?.uri.scheme === 'file' && location === document.fileName && !['search', 'publish'].includes(args[1])) {
-      const boundary = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath ?? path.dirname(document.fileName);
-      args.push('--workspace', boundary);
+      if (project || library) return {location: project ?? library};
       const settings = vscode.workspace.getConfiguration('cocovs', document.uri);
       const profile = getLaunchProfile(context.globalState, document.fileName);
-      args.push('--target', profile?.target ?? inferTarget(document.fileName, document.languageId, settings.get('target')));
-      if (args[0] === 'analyze') args.push('--architecture', profile?.architecture ?? settings.get('architecture', 'vonNeumann'));
+      return {location: document.fileName, workspace: boundary,
+        target: profile?.target ?? inferTarget(document.fileName, document.languageId, settings.get('target')),
+        architecture: profile?.architecture ?? settings.get('architecture', 'vonNeumann')};
     }
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (folder?.uri.scheme === 'file') return {location: folder.uri.fsPath};
+    throw new Error('Open a saved assembly file or local project folder.');
+  }
+  async function invoke(args, selection) {
+    if (selection) {
+      if (args[0] === 'pub') args.push('--path', selection.location);
+      else args.push(selection.location);
+      if (selection.workspace) {
+        args.push('--workspace', selection.workspace, '--target', selection.target);
+        if (args[0] === 'analyze') args.push('--architecture', selection.architecture);
+      }
+    }
+    const python = await ensure();
+    if (!python) return undefined;
     const {report} = await jsonResult(python, ['-m', 'cdmbot', ...args, '--json'], {timeout: 300000});
     if (report.passed === false && report.error) throw new Error(report.error);
     return report;
@@ -132,7 +135,7 @@ function registerDevelopment(context, vscode, toolchain, output, showError) {
   const actions = {
     'cocovs.installCdmbot': async () => { await install(); changes.fire(); vscode.window.showInformationMessage('cdmbot ' + VERSION + ' is ready.'); },
     'cocovs.analyze': async () => {
-      const report = await invoke(['analyze', current()]);
+      const report = await invoke(['analyze'], current());
       if (!report) return;
       const escape = value => String(value).replaceAll('|', '\\|').replaceAll('\n', ' ');
       const text = ['# CdM code analysis', '', '| File | Lines | Code | Comments | Instruction lines |', '| --- | ---: | ---: | ---: | ---: |',
@@ -145,7 +148,8 @@ function registerDevelopment(context, vscode, toolchain, output, showError) {
       if (!name) return;
       const source = await vscode.window.showInputBox({prompt: 'HTTPS Git URL or local repository; leave empty to use the package registry'});
       if (source === undefined) return;
-      const args = ['pub', 'add', name, '--path', current(true)];
+      const selection = current(true);
+      const args = ['pub', 'add', name];
       if (source) {
         const ref = await vscode.window.showInputBox({prompt: 'Git tag or branch', value: 'main'});
         if (!ref) return;
@@ -153,20 +157,20 @@ function registerDevelopment(context, vscode, toolchain, output, showError) {
       }
       const registry = vscode.workspace.getConfiguration('cocovs').get('packageRegistry');
       if (!source && registry) args.push('--registry', registry);
-      const report = await invoke(args);
+      const report = await invoke(args, selection);
       if (report) { output.appendLine(JSON.stringify(report, null, 2)); vscode.window.showInformationMessage('Package installed. Import sources with # @include "@' + name + '/path.asm".'); }
     },
-    'cocovs.getPackages': () => invoke(['pub', 'get', '--path', current(true), ...registryArgs()]),
-    'cocovs.updatePackages': () => invoke(['pub', 'update', '--path', current(true), ...registryArgs()]),
+    'cocovs.getPackages': () => invoke(['pub', 'get', ...registryArgs()], current(true)),
+    'cocovs.updatePackages': () => invoke(['pub', 'update', ...registryArgs()], current(true)),
     'cocovs.removePackage': async () => {
-      const location = current(true);
-      const report = await invoke(['pub', 'list', '--path', location]);
+      const selection = current(true);
+      const report = await invoke(['pub', 'list'], selection);
       if (!report) return;
       const name = await vscode.window.showQuickPick(Object.keys(report.dependencies), {placeHolder: 'Dependency to remove'});
-      if (name) await invoke(['pub', 'remove', name, '--path', location]);
+      if (name) await invoke(['pub', 'remove', name], selection);
     },
     'cocovs.browsePackages': async () => {
-      const location = current(true);
+      const selection = current(true);
       const registry = registryArgs();
       const report = await invoke(['pub', 'search', ...registry]);
       if (!report) return;
@@ -176,7 +180,8 @@ function registerDevelopment(context, vscode, toolchain, output, showError) {
         detail: [card.description ?? card.source?.git ?? card.git, card.publisher?.description].filter(Boolean).join(' — ')})),
       {placeHolder: 'Search packages by name, description or publisher', matchOnDescription: true, matchOnDetail: true});
       if (selected) {
-        await invoke(['pub', 'add', selected.label, '--path', location, ...registry]);
+        const added = await invoke(['pub', 'add', selected.label, ...registry], selection);
+        if (!added) return;
         vscode.window.showInformationMessage('Package installed. Use # @include "@' + selected.label + '/lib.asm".');
       }
     },

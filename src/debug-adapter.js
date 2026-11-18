@@ -46,10 +46,11 @@ class DebugAdapter {
   }
 
   async handleMessage(message) {
-    if (message.type !== 'request') return;
+    if (message.type !== 'request' || this.disposed) return;
     const {seq: request_seq, command, arguments: args = {}} = message;
     try {
       const body = await this.request(command, args);
+      if (this.disposed) return;
       this.send({type: 'response', seq: ++this.sequence, request_seq, command, success: true, body});
       if (command === 'launch') this.event('initialized');
       if (command === 'configurationDone' && this.state && !this.configured) {
@@ -118,6 +119,7 @@ class DebugAdapter {
     const [image, metadata] = await Promise.all([
       fs.readFile(artifacts.image, 'utf8'), fs.readFile(artifacts.debug, 'utf8'),
     ]);
+    if (this.finished) throw new Error('The debug session ended during launch.');
     const debug = JSON.parse(metadata);
     this.locations = sourceMap(debug, root, this.size);
     this.dataLabels = Array.isArray(debug.dataLabels) ? debug.dataLabels : [];
@@ -128,16 +130,21 @@ class DebugAdapter {
     this.stopOnEntry = stopOnEntry;
     this.architecture = architecture;
     const worker = await this.makeWorker(target);
-    if (this.disposed) {
+    if (this.finished) {
       worker.dispose();
-      return;
+      throw new Error('The debug session ended during launch.');
     }
     this.worker = worker;
     try {
-      this.state = await worker.request({command: 'start', architecture, locations,
+      const state = await worker.request({command: 'start', architecture, locations,
         image: rom, limit: maxSteps});
+      if (this.finished) throw new Error('The debug session ended during launch.');
+      this.state = state;
     } catch (error) {
-      worker.dispose();
+      if (this.worker === worker) {
+        this.worker = undefined;
+        worker.dispose();
+      }
       throw error;
     }
   }
