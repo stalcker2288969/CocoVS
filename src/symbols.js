@@ -143,11 +143,12 @@ function completionContext(line, column) {
   if (code.length < column || line[column] === '#' || /^\s*#/.test(line)) return undefined;
   // During editing, `stays >` can look like an exported label declaration.
   const condition = /^\s*(is|stays|until)(?=\s+[<>!=])/i.exec(code);
-  const declaration = labelPattern.exec(code);
-  if (!condition && declaration && column < declaration[0].length || macroPattern.test(code)) return undefined;
+  const declaration = !condition && labelPattern.exec(code);
+  if (macroPattern.test(code)) return undefined;
   const operation = condition ? {name: condition[1], end: condition[0].length} : operationAt(code);
+  if (declaration && (!operation || column <= operation.column)) return undefined;
   if (!operation || column <= operation.end) return {kind: 'operation'};
-  if (!/\s/.test(code[operation.end])) return undefined;
+  if (/^tplate$/i.test(operation.name) || !/\s/.test(code[operation.end])) return undefined;
   const operands = operandList(line, code, operation.end, column);
   if (!operands || operands.previous.includes('')) return undefined;
   const {previous, start} = operands;

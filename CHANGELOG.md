@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2
+
+- Keep completion quiet after a label or template declaration. Suggest instructions when you start typing the mnemonic.
+
 ## 1.0.1
 
 - Show a clickable reference count above code labels, data labels and macros, with references from linked files.

@@ -151,6 +151,20 @@ test('editor completes includes and imported symbols, colors references and navi
   const commentItems = line => completion.provideCompletionItems(document(main, line), new Position(0, line.length), token);
   const suggestions = async line => (await commentItems(line)).map(item => item.label);
   assert.ok((await suggestions('    ld')).includes('ldi'));
+  for (const [line, column = line.length] of [
+    ['somelable:'], ['  somelable: '], ['somelable:\t'], ['somelable>'], ['first, second> '],
+    ['somelable:  # keep comment', 11], ['somelable:  ldi r0, 1', 12],
+    ['tplate '], ['tplate Person'], ['TPLATE Person '],
+  ]) {
+    const items = await completion.provideCompletionItems(document(main, line), new Position(0, column), token);
+    assert.deepEqual(items, [], line);
+  }
+  assert.ok((await suggestions('somelable: ld')).includes('ldi'));
+  assert.ok((await suggestions('somelable> ld')).includes('ldi'));
+  assert.deepEqual(await suggestions('somelable: tst '), ['r0', 'r1', 'r2', 'r3']);
+  const templateField = 'tplate Person\nfield:\n    d';
+  const body = await completion.provideCompletionItems(document(main, templateField), new Position(2, 5), token);
+  assert.ok(body.some(item => item.label === 'ds'));
   assert.ok((await suggestions('# @include "lib/m')).includes('math.asm'));
   assert.deepEqual(await suggestions('    tst '), ['r0', 'r1', 'r2', 'r3']);
   for (const line of ['    tst r0 ', '    tst r0, ', '    ldi r0 ', '    ldi r0 next',
