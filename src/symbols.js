@@ -34,7 +34,7 @@ function indexSymbols(text, library = false, includeExternal = false) {
     const header = /^\s*tplate\s+([A-Za-z_][\w]*)\s*$/i.exec(code);
     if (!inMacro && /^\s*(?:asect|rsect|tplate|end)\b/i.test(code)) finishTemplate();
     if (!inMacro && header) {
-      template = {name: header[1], line, column: code.indexOf(header[1]), definitionLength: header[1].length,
+      template = {name: header[1], line, column: header[0].trimEnd().length - header[1].length, definitionLength: header[1].length,
         kind: 'template', documentation: documentation.join('\n').trim() || 'CoCAS structure template.'};
       symbols.push(template);
       offset = 0;
@@ -110,6 +110,7 @@ function branchTargets(text, instructions) {
 
 function operandList(line, code, start, end = code.length) {
   const previous = [];
+  const starts = [];
   let depth = 0;
   for (let index = start; index < end; index++) {
     const character = code[index];
@@ -117,11 +118,24 @@ function operandList(line, code, start, end = code.length) {
     else if (character === ')') depth--;
     else if (character === ',' && depth === 0) {
       previous.push(line.slice(start, index).trim());
+      starts.push(start);
       start = index + 1;
     }
     if (depth < 0) return undefined;
   }
-  return {previous, start, depth};
+  return {previous, starts, start, depth};
+}
+
+function argumentSpans(line, code, start) {
+  const parsed = operandList(line, code, start);
+  if (!parsed || parsed.depth || parsed.previous.includes('')) return undefined;
+  const last = line.slice(parsed.start, code.length).trim();
+  if (!last) return parsed.previous.length ? undefined : [];
+  return [...parsed.previous, last].map((text, i) => {
+    const offset = parsed.starts[i] ?? parsed.start;
+    const column = offset + /^\s*/.exec(line.slice(offset))[0].length;
+    return {text, column};
+  });
 }
 
 function completionContext(line, column) {
@@ -203,5 +217,5 @@ function radixLiteralAt(line, column) {
   return undefined;
 }
 
-module.exports = {branchTargets, branches, colorTokens, completionContext, controlFlow, indexSymbols,
+module.exports = {argumentSpans, branchTargets, branches, colorTokens, completionContext, controlFlow, indexSymbols,
   operandList, operationAt, radixLiteralAt, sourceLine, symbolAt};

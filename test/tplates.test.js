@@ -21,6 +21,8 @@ test('templates index qualified fields, sizes and source ranges', () => {
   assert.match(symbols.find(symbol => symbol.name === 'Person._').documentation, /= 14/);
   assert.equal(symbols.find(symbol => symbol.name === 'Person.age').definitionLength, 3);
   assert.equal(symbols.filter(symbol => symbol.name === 'age').length, 1);
+  const [shortName] = indexSymbols('  tplate t  # a valid short name\nfield: ds 1\nend');
+  assert.equal(shortName.column, 9);
   const unknown = indexSymbols('tplate Dynamic\nfield: ds SOME_CONSTANT\nasect 0\nend');
   assert.match(unknown.find(symbol => symbol.name === 'Dynamic._').documentation, /evaluated by CoCAS/);
   const multiple = indexSymbols(layout + 'tplate Packet\nname: ds 2\npayload: ds 6\nasect 0\nend');

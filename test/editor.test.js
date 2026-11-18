@@ -27,6 +27,7 @@ test('editor completes includes and imported symbols, colors references and navi
   const libDoc = document(library, 'rsect math\n# Computes the result\ncalculate>\n    rts\nend\n');
   const providers = {};
   const watchers = [];
+  let showReferenceCounts = true;
   let refreshes = 0;
   const dispose = {dispose() {}};
   class Position {
@@ -36,6 +37,10 @@ test('editor completes includes and imported symbols, colors references and navi
     constructor(line, start, endLine, end) {
       this.start = new Position(line, start);
       this.end = new Position(endLine, end);
+    }
+    contains(position) {
+      return (position.line > this.start.line || position.line === this.start.line && position.character >= this.start.character) &&
+        (position.line < this.end.line || position.line === this.end.line && position.character <= this.end.character);
     }
   }
   const api = {
@@ -50,6 +55,13 @@ test('editor completes includes and imported symbols, colors references and navi
       appendCodeblock(value) { this.value += value; }
     },
     Hover: class { constructor(contents, range) { this.contents = contents; this.range = range; } },
+    InlayHint: class { constructor(position, label) { Object.assign(this, {position, label}); } },
+    InlayHintKind: {Parameter: 2},
+    CallHierarchyItem: class {
+      constructor(kind, name, detail, uri, range, selectionRange) { Object.assign(this, {kind, name, detail, uri, range, selectionRange}); }
+    },
+    CallHierarchyIncomingCall: class { constructor(from, fromRanges) { Object.assign(this, {from, fromRanges}); } },
+    CallHierarchyOutgoingCall: class { constructor(to, fromRanges) { Object.assign(this, {to, fromRanges}); } },
     SignatureHelp: class {},
     SignatureInformation: class { constructor(label, documentation) { this.label = label; this.documentation = documentation; } },
     ParameterInformation: class { constructor(label, documentation) { this.label = label; this.documentation = documentation; } },
@@ -67,7 +79,7 @@ test('editor completes includes and imported symbols, colors references and navi
     },
     workspace: {
       textDocuments: [mainDoc, libDoc], getWorkspaceFolder: () => ({uri: uri(root)}),
-      getConfiguration: () => ({get: () => 'cdm8'}), onDidSaveTextDocument: () => dispose,
+      getConfiguration: () => ({get: key => key === 'referenceCodeLens' ? showReferenceCounts : 'cdm8'}), onDidSaveTextDocument: () => dispose,
       onDidChangeTextDocument: () => dispose, onDidCloseTextDocument: () => dispose, onDidChangeConfiguration: () => dispose,
       openTextDocument: async target => document(target.fsPath, await fs.readFile(target.fsPath, 'utf8')),
       createFileSystemWatcher(pattern) {
@@ -82,7 +94,10 @@ test('editor completes includes and imported symbols, colors references and navi
     window: {visibleTextEditors: [], onDidChangeVisibleTextEditors: () => dispose},
     languages: new Proxy({createDiagnosticCollection: () => dispose}, {
       get(target, name) {
-        return target[name] ?? ((_selector, provider) => { providers[name] = provider; return dispose; });
+        return target[name] ?? ((_selector, provider) => {
+          providers[name === 'registerCodeLensProvider' && provider.resolveCodeLens ? 'referenceLenses' : name] = provider;
+          return dispose;
+        });
       },
     }),
   };
@@ -243,6 +258,9 @@ test('editor completes includes and imported symbols, colors references and navi
   assert.equal(manifest.contributes.semanticTokenTypes[4].id, 'cocovsDirective');
   assert.deepEqual(manifest.contributes.semanticTokenScopes[0].scopes.cocovsDirective, ['keyword.control.cocovs']);
   const wide = document(path.join(root, 'sample.cdm16.asm'), '    ldw r0, r1, r2');
+  const wideHints = document(wide.fileName, '    ldi r7, 0x8000\n    ldi r7, \n    ldi r7, 0x');
+  assert.deepEqual((await providers.registerInlayHintsProvider.provideInlayHints(wideHints, new Range(0, 0, 2, 14), token))
+    .map(hint => [hint.position.line, hint.label]), [[1, 'value:']]);
   const wideHover = await hover.provideHover(wide, new Position(0, 5), token);
   assert.match(wideHover.contents[0].value, /ldw\(addressRegister, destination\)\nldw\(baseRegister, indexRegister, destination\)/);
   assert.match(wideHover.contents[0].value, /Read from data memory[\s\S]*\*\*Inputs\*\*[\s\S]*\*\*Returns\*\*[\s\S]*16-bit word/);
@@ -342,6 +360,87 @@ test('editor completes includes and imported symbols, colors references and navi
   assert.deepEqual(providers.registerDocumentLinkProvider.provideDocumentLinks(invalidLinks), []);
   const packageColors = await semantic.provideDocumentSemanticTokens(packageDoc, token);
   assert.ok(packageColors.some(([line, column, _length, type]) => line === 2 && column === 4 && type === 1));
+
+  const inlays = providers.registerInlayHintsProvider;
+  const hintSource = document(packageMain, ['# @include "@memoryze8/lib.asm"', 'asect 0',
+    '    setmem (result+2), "a,b" # comma, ignored', '    incptr r0, r1', '    incptr r0',
+    '    ldi r0, 0x02', '    incptr r0,', '# setmem result, 7', '    setmem (result+2),  # pending',
+    '    ldi ', '    ldi r0,', '    ldi r0, 0x', '    jsr ', '    halt ', '    ldi r0, (123',
+    '    ldi , ', '    ldi r0', '    ldi 42,', '    setmem ', 'end'].join('\n'));
+  const hintRange = new Range(2, 0, 19, 0);
+  const hints = await inlays.provideInlayHints(hintSource, hintRange, token);
+  assert.deepEqual(hints.map(hint => [hint.position.line, hint.label, hintSource.lineAt(hint.position.line).text.slice(hint.position.character)]), [
+    [6, 'TMP:', ''], [8, 'VALUE:', '# pending'], [9, 'destination:', ''],
+    [10, 'value:', ''], [12, 'target:', ''], [18, 'ADDRESS:', ''],
+  ]);
+  assert.equal(hints[0].tooltip, 'Scratch register');
+  assert.equal(hints[0].paddingLeft, true);
+  assert.equal(hints[1].paddingLeft, false);
+  assert.deepEqual(await inlays.provideInlayHints(hintSource, hintRange, {isCancellationRequested: true}), []);
+
+  const references = providers.registerReferenceProvider;
+  const usages = async (doc, line, column, declarations = false) =>
+    (await references.provideReferences(doc, new Position(line, column), {includeDeclaration: declarations}, token))
+      .map(location => [location.uri.fsPath, location.range.start.line, location.range.start.character]);
+  assert.deepEqual(await usages(hintSource, 3, 5), [[packageMain, 3, 4]]);
+  assert.deepEqual(await usages(hintSource, 4, 5), [[packageMain, 4, 4]]);
+  const packageLibrary = await api.workspace.openTextDocument(uri(macroFile));
+  assert.deepEqual(await usages(packageLibrary, 5, 2), [[packageMain, 2, 4]]);
+
+  const wrapper = path.join(root, 'lib', 'wrapper.asm');
+  await fs.writeFile(wrapper, '# @include "./*"\nend\n');
+  const navMain = document(main, ['# @include "lib/math.asm"', '# @include "lib/wrapper.asm"',
+    'calculate: ext', 'asect 0', 'main:', '    jsr calculate # calculate', 'loop:', '    jsr calculate',
+    '    jsrr r0', '    br loop', '    halt', 'data: dc "calculate"', 'end'].join('\n'));
+  const navLibrary = document(library, ['rsect math', 'calculate>', '    jsr helper', '    rts', 'helper:', '    rts',
+    'rsect other', 'calculate:', '    br calculate', '    rts', 'end'].join('\n'));
+  api.workspace.textDocuments.splice(0, 2, navMain, navLibrary);
+  assert.deepEqual(await usages(navLibrary, 1, 2), [[main, 5, 8], [main, 7, 8]]);
+  assert.deepEqual(await usages(navMain, 5, 9, true), [[main, 2, 0], [main, 5, 8], [main, 7, 8], [library, 1, 0]]);
+  assert.deepEqual(await usages(navLibrary, 7, 2), [[library, 8, 7]]);
+  assert.deepEqual(await usages(navMain, 0, 20), [[main, 0, 12], [wrapper, 0, 12]]);
+  const incompleteLink = document(main, '# @include "missing.asm"\ncalculate: ext\nasect 0\n    jsr calculate\nend\n');
+  assert.deepEqual(await usages(incompleteLink, 3, 10, true), [[main, 1, 0], [main, 3, 8]]);
+
+  const lensProvider = providers.referenceLenses;
+  const resolve = lens => lensProvider.resolveCodeLens(lens, token);
+  const routineLenses = lensProvider.provideCodeLenses(navLibrary, token);
+  assert.equal(routineLenses.length, 3);
+  assert.equal(routineLenses[0].command, undefined);
+  const [routine, helper, shadow] = await Promise.all(routineLenses.map(resolve));
+  assert.equal(routine.command.title, '2 references');
+  assert.equal(routine.command.command, 'editor.action.peekLocations');
+  assert.equal(routine.command.arguments[0], navLibrary.uri);
+  assert.deepEqual(routine.command.arguments[2].map(location => [location.uri.fsPath, location.range.start.line]), [[main, 5], [main, 7]]);
+  assert.equal(helper.command.title, '1 reference');
+  assert.equal(shadow.command.title, '1 reference');
+  const [data] = lensProvider.provideCodeLenses(navMain, token).filter(lens => lens.range.start.line === 11);
+  api.env = {language: 'ru'};
+  assert.deepEqual((await resolve(data)).command, {title: 'Ссылок: 0', command: ''});
+  api.env = {language: 'en'};
+  const [macroLens] = lensProvider.provideCodeLenses(packageLibrary, token);
+  assert.equal((await resolve(macroLens)).command.title, '1 reference');
+  showReferenceCounts = false;
+  assert.deepEqual(lensProvider.provideCodeLenses(navLibrary, token), []);
+  showReferenceCounts = true;
+  const [staleLens] = lensProvider.provideCodeLenses(navLibrary, token);
+  navLibrary.version++;
+  assert.equal(await resolve(staleLens), undefined);
+
+  const calls = providers.registerCallHierarchyProvider;
+  const prepare = (doc, line, character) => calls.prepareCallHierarchy(doc, new Position(line, character), token);
+  assert.deepEqual(await prepare(incompleteLink, 3, 10), []);
+  const [callee] = await prepare(navMain, 5, 9);
+  assert.equal(callee.name, 'calculate');
+  assert.equal(callee.uri.fsPath, library);
+  const callers = calls.provideCallHierarchyIncomingCalls(callee, token);
+  assert.deepEqual(callers.map(call => [call.from.name, call.fromRanges.map(range => range.start.line)]), [['main', [5, 7]]]);
+  assert.deepEqual(calls.provideCallHierarchyOutgoingCalls(callee, token).map(call => call.to.name), ['helper']);
+  assert.deepEqual(await prepare(navMain, 11, 2), []);
+  const [parentFile] = await prepare(navMain, 0, 4);
+  assert.deepEqual(calls.provideCallHierarchyOutgoingCalls(parentFile, token).map(call => call.to.name), ['math.asm', 'wrapper.asm']);
+  const [includedFile] = await prepare(navMain, 0, 20);
+  assert.deepEqual(calls.provideCallHierarchyIncomingCalls(includedFile, token).map(call => call.from.name), ['main.asm', 'wrapper.asm']);
 
   const cacheWatcher = watchers.find(watcher => watcher.pattern.includes('.cdm/packages'));
   const beforeRefresh = refreshes;

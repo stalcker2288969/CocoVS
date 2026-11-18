@@ -256,6 +256,50 @@ test('explains an included module’s missing end and logs the original diagnost
   assert.match(friendlyMessage('ldi: expected 2 operand(s), found 3.', 'ru'), /Ожидалось 2, указано 3/);
 });
 
+test('build checks all destinations and keeps backups when a publication rollback fails', async t => {
+  const root = await fixture(t);
+  const source = path.join(root, 'main.asm');
+  await fs.writeFile(source, 'asect 0\nhalt\nend\n');
+  const job = createJob({file: source});
+  const old = artifactPaths(job);
+  const run = async (_tool, args) => {
+    await fs.writeFile(args[args.indexOf('-o') + 1], 'new image');
+    await fs.writeFile(args[args.indexOf('--debug') + 1], '{}');
+    return {code: 0, stdout: '', stderr: ''};
+  };
+  const rebuild = () => build(job, command('cocas'), {}, run);
+  await fs.mkdir(path.dirname(old.image));
+  await fs.writeFile(old.combined, 'previous source');
+  await fs.writeFile(old.debug, 'previous debug info');
+  await fs.mkdir(old.image);
+  const combinedBefore = await fs.stat(old.combined);
+  await assert.rejects(rebuild, /Expected an output file: .*main\.img/);
+  assert.equal((await fs.stat(old.combined)).ino, combinedBefore.ino);
+  assert.equal(await fs.readFile(old.combined, 'utf8'), 'previous source');
+  await fs.rmdir(old.image);
+  await fs.writeFile(old.image, 'previous image');
+
+  const rename = fs.rename;
+  const [combined, debug, image] = [old.combined, old.debug, old.image].map(file => path.basename(file));
+  t.mock.method(fs, 'rename', async (from, to) => {
+    if ([image, debug + '.previous'].includes(path.basename(from))) throw new Error('Simulated file lock');
+    await rename(from, to);
+  });
+  await assert.rejects(rebuild, asyncError => {
+    assert.match(asyncError.message, /Rollback was incomplete/);
+    assert.equal(asyncError.errors.length, 2);
+    return true;
+  });
+  assert.equal(await fs.readFile(old.image, 'utf8'), 'previous image');
+  assert.equal(await fs.readFile(old.combined, 'utf8'), 'previous source');
+  const [recovery] = (await fs.readdir(path.dirname(old.image))).filter(name => name.startsWith('.cocovs-'));
+  assert.ok(recovery);
+  assert.equal(await fs.readFile(path.join(path.dirname(old.image), recovery, debug + '.previous'), 'utf8'), 'previous debug info');
+  t.mock.restoreAll();
+  assert.ok((await rebuild()).ok);
+  assert.equal(await fs.readFile(old.image, 'utf8'), 'new image');
+});
+
 test('the raw image reader supports Logisim repeat syntax and rejects invalid data', () => {
   assert.deepEqual([...decodeImage('v2.0 raw\r\n42 2*ff # fill\r\na', 5)], [66, 255, 255, 10, 0]);
   assert.throws(() => decodeImage('v3.0 hex words addressed\n0', 4), /Expected/);

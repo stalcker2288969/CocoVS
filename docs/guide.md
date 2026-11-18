@@ -142,6 +142,12 @@ These relations describe `cmp left, right` as `left relation right`. After `cmp 
 
 ### Diagnostics and refactoring
 
+The **References** CodeLens above a label or macro counts its uses in the linked sources. Select the count to open the matching locations in the editor. Turn these counts off with `cocovs.referenceCodeLens`.
+
+Use **Find All References** on a label, macro name, or include path to find its uses in the linked sources. Macro overloads are resolved by argument count. A standalone file uses its own include tree or the tree of its unique open entry file in the workspace. **Show Call Hierarchy** on a routine or macro lists callers and callees. Select an `@include` path to see which files include it, or select the `@include` keyword to start from the current file. The hierarchy shows direct calls and statically named macro invocations. Register-indirect calls and labels resolved only during macro expansion are omitted.
+
+For a macro with `@param` documentation or a documented instruction, a hint can appear in the next empty operand slot after a space or comma. The hint disappears as soon as you type an operand. Turn these hints off with `cocovs.inlayHints`.
+
 CoCAS checks syntax after a short typing delay, including unsaved buffers and included modules. Errors appear in the editor and **Problems**. Set `cocovs.liveDiagnostics` to `false` to disable live assembler checks. Link errors are reported during a build.
 
 F2 renames simple labels, `ext` declarations, exports, and source references across linked modules. CocoVS also checks sources referenced by cdmbot suites. Renaming stops for ambiguous references, conflicts, macro use that prevents safe analysis, or labels referenced in `setup.input`. Open a CocoVS or cdmbot project to rename exports across modules.

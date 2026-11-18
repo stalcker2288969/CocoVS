@@ -103,7 +103,8 @@ function sourceDirective(line) {
   if (!match) return undefined;
   const name = match[1] || match[2] || match[3];
   const folder = /[\\/]\*$/.test(name);
-  return {name, folder, path: (folder ? name.slice(0, -1) : name).replaceAll('\\', '/')};
+  return {name, folder, path: (folder ? name.slice(0, -1) : name).replaceAll('\\', '/'),
+    column: line.indexOf(name, line.indexOf('@') + '@include'.length)};
 }
 
 function packageRoot(root, file) {
@@ -169,24 +170,24 @@ function verifyPackages(root, config) {
   }
 }
 
-function resolveSources(root, config, {read = readText, onError, allowMissingPackages = false} = {}) {
+function resolveSources(root, config, {read = readText, onError, onInclude, allowMissingPackages = false} = {}) {
   const realRoot = fs.realpathSync(root);
-  const visited = new Set();
+  const visited = new Map();
   const stack = new Map();
   const result = [];
   const packages = packageRoot(root, path.resolve(root, config.entry));
   function dependency(name, parent) {
     return includePath(root, parent, name, {packages, allowMissingPackages});
   }
-  function visit(name, parent) {
+  function visit(name, parent, include) {
     try {
-      visitSource(name, parent);
+      visitSource(name, parent, include);
     } catch (error) {
       if (!onError) throw error;
       onError(error);
     }
   }
-  function visitFolder(name, parent) {
+  function visitFolder(name, parent, include) {
     const resolved = dependency(name, parent);
     if (!resolved) return;
     const absolute = confined(root, resolved);
@@ -195,10 +196,10 @@ function resolveSources(root, config, {read = readText, onError, allowMissingPac
     for (const entry of entries) {
       const file = path.join(absolute, entry);
       if (file === parent || !fs.statSync(file, {throwIfNoEntry: false})?.isFile()) continue;
-      visit(file, parent);
+      visit(file, parent, include);
     }
   }
-  function visitSource(name, parent) {
+  function visitSource(name, parent, include) {
     const resolved = parent ? dependency(name, parent) : path.resolve(root, name);
     if (!resolved) return;
     const absolute = confined(root, resolved);
@@ -208,18 +209,20 @@ function resolveSources(root, config, {read = readText, onError, allowMissingPac
     const real = confined(realRoot, fs.realpathSync(absolute));
     const relative = path.relative(root, absolute).split(path.sep).join('/');
     if (stack.has(real)) throw new Error('Cyclic @include: ' + [...stack.values(), relative].join(' -> '));
+    if (include) onInclude?.({...include, from: parent, to: path.resolve(root, visited.get(real) ?? relative)});
     if (visited.has(real)) return;
-    visited.add(real);
+    visited.set(real, relative);
     stack.set(real, relative);
     result.push(relative);
     try {
       if (!/\.(?:obj|o|lib)$/i.test(absolute)) {
-        for (const line of read(absolute).split(/\r?\n/)) {
-          const directive = sourceDirective(line);
+        for (const [line, text] of read(absolute).split(/\r?\n/).entries()) {
+          const directive = sourceDirective(text);
           if (!directive) continue;
-          if (!directive.folder) visit(directive.path, absolute);
+          const location = onInclude && {line, column: directive.column, length: directive.name.length};
+          if (!directive.folder) visit(directive.path, absolute, location);
           else {
-            try { visitFolder(directive.path, absolute); }
+            try { visitFolder(directive.path, absolute, location); }
             catch (error) {
               if (!onError) throw error;
               onError(error);

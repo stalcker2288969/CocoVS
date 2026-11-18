@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vscode = require('vscode');
 const {ASSEMBLY, MANIFEST, confined, inferTarget, loadProject, locateProject, resolveSources, sourceDirective, includePath} = require('./project');
-const {branchTargets, colorTokens, completionContext, indexSymbols, operationAt, radixLiteralAt, sourceLine, symbolAt} = require('./symbols');
+const {branchTargets, colorTokens, completionContext, indexSymbols, operandList, operationAt, radixLiteralAt, sourceLine, symbolAt} = require('./symbols');
 const {externalInsertionLine, includeCandidates, includeContext} = require('./editor-support');
 const instructionSets = require('./instructions.json');
 const {callAt, instructionSignatures, signature} = require('./signatures');
@@ -16,6 +16,7 @@ const {findCdmbot, editCdmbot} = require('./cdmbot');
 const {operandKinds, conditionNames, comparisonConditions} = require('./operands');
 const {getLaunchProfile} = require('./launch-profile');
 const {entryPoints} = require('./entry-points');
+const {indexModule, navigationGraph, nodesAt} = require('./navigation');
 
 const SELECTOR = ['cocovs-assembly', 'cdm8-assembly', 'cdm8e-assembly', 'cdm16-assembly', 'cdm16e-assembly'];
 const DIRECTIVES = 'asect rsect tplate dc db dw ds align ext end macro mend mpush mpop if is then else fi while stays wend do until break continue'.split(' ');
@@ -31,7 +32,11 @@ function registerEditor(context, liveDiagnostics) {
   const indexes = new WeakMap();
   const semanticTypes = new vscode.SemanticTokensLegend(['cocovsMnemonic', 'cocovsUserMacro', 'cocovsLabel', 'cocovsControlFlow', 'cocovsDirective']);
   const refreshColors = new vscode.EventEmitter();
+  const refreshInlays = new vscode.EventEmitter();
+  const refreshReferences = new vscode.EventEmitter();
   const diagnostics = vscode.languages.createDiagnosticCollection('cocovs-symbols');
+  const hierarchy = new WeakMap();
+  const referenceLenses = new WeakMap();
 
   function getSymbols(document) {
     const cached = indexes.get(document);
@@ -39,6 +44,12 @@ function registerEditor(context, liveDiagnostics) {
     const symbols = indexSymbols(document.getText(), /\.mlb$/i.test(document.fileName), true);
     indexes.set(document, {version: document.version, symbols});
     return symbols;
+  }
+
+  function getModule(document) {
+    const symbols = getSymbols(document);
+    const cache = indexes.get(document);
+    return cache.module ??= indexModule(fileKey(document.fileName), document.getText(), symbols);
   }
 
   function projectInfo(document) {
@@ -59,22 +70,46 @@ function registerEditor(context, liveDiagnostics) {
     return {root, config, target, instructions};
   }
 
-  async function available(document, token, info = projectInfo(document)) {
-    const symbols = getSymbols(document).map(symbol => ({...symbol, uri: document.uri}));
-    const result = {symbols, incomplete: false};
+  async function linkedDocuments(document, token, info, {forNavigation = false, strict = forNavigation} = {}) {
+    const result = {documents: [document], includes: [], incomplete: false};
     if (document.uri.scheme !== 'file') return result;
     const {root, config} = info;
     const open = new Map(vscode.workspace.textDocuments.filter(doc => doc.uri.scheme === 'file')
       .map(doc => [fileKey(doc.fileName), doc]));
+    const ownFile = fileKey(document.fileName);
+    open.set(ownFile, document);
     const read = file => open.get(fileKey(file))?.getText() ?? fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
     const onError = () => { result.incomplete = true; };
-    const ownFile = fileKey(document.fileName);
     const ownProject = {entry: path.relative(root, document.fileName)};
-    let sources;
+    const onInclude = forNavigation ? item => result.includes.push({...item, from: fileKey(item.from), to: fileKey(item.to)}) : undefined;
+    let sources = [];
     try {
-      sources = resolveSources(root, config ?? ownProject, {read, onError});
-      if (config && !sources.some(file => fileKey(path.join(root, file)) === ownFile)) {
-        sources.push(...resolveSources(root, ownProject, {read, onError}));
+      sources = resolveSources(root, config ?? ownProject, {read, onError, onInclude});
+      const belongsToProject = config && sources.some(file => fileKey(path.join(root, file)) === ownFile);
+      if (config && !belongsToProject) {
+        if (strict) {
+          sources = [];
+          result.includes.length = 0;
+        }
+        sources.push(...resolveSources(root, ownProject, {read, onError, onInclude}));
+      }
+      if (forNavigation && !belongsToProject) {
+        const owners = [];
+        for (const candidate of open.values()) {
+          if (token?.isCancellationRequested) return result;
+          const file = fileKey(candidate.fileName);
+          if (file === ownFile || !ASSEMBLY.test(file) || !/^\s*(?:#|;)\s*@include\b/im.test(candidate.getText())) continue;
+          try { confined(root, candidate.fileName); } catch { continue; }
+          const entry = path.relative(root, candidate.fileName);
+          const paths = resolveSources(root, {entry}, {read, onError() {}});
+          const keys = new Set(paths.map(name => fileKey(path.join(root, name))));
+          if (keys.has(ownFile)) owners.push({file, entry, keys});
+        }
+        const entries = owners.filter(owner => !owners.some(other => other !== owner && other.keys.has(owner.file)));
+        if (entries.length === 1) {
+          result.includes.length = 0;
+          sources = resolveSources(root, {entry: entries[0].entry}, {read, onError, onInclude});
+        }
       }
     } catch {
       onError();
@@ -86,16 +121,24 @@ function registerEditor(context, liveDiagnostics) {
       if (!ASSEMBLY.test(relative)) continue;
       const file = path.join(root, relative);
       if (fileKey(file) === ownFile) continue;
-      let dependency;
-      try { dependency = open.get(fileKey(file)) ?? await vscode.workspace.openTextDocument(vscode.Uri.file(file)); }
-      catch { onError(); continue; }
+      try { result.documents.push(open.get(fileKey(file)) ?? await vscode.workspace.openTextDocument(vscode.Uri.file(file))); }
+      catch { onError(); }
+    }
+    return result;
+  }
+
+  async function available(document, token, info = projectInfo(document), options) {
+    const {documents, incomplete} = await linkedDocuments(document, token, info, options);
+    const symbols = getSymbols(document).map(symbol => ({...symbol, uri: document.uri}));
+    for (const dependency of documents.slice(1)) {
+      const relative = path.relative(info.root, dependency.fileName).split(path.sep).join('/');
       for (const symbol of getSymbols(dependency)) {
-        if (!symbol.external && (symbol.exported || symbol.kind === 'macro' && /\.mlb$/i.test(file) || info.target === 'custom')) {
+        if (!symbol.external && (symbol.exported || symbol.kind === 'macro' && /\.mlb$/i.test(relative) || info.target === 'custom')) {
           symbols.push({...symbol, uri: dependency.uri, imported: true, relative});
         }
       }
     }
-    return result;
+    return {symbols, incomplete};
   }
 
   function range(symbol) {
@@ -104,6 +147,136 @@ function registerEditor(context, liveDiagnostics) {
 
   function formatName(symbol) {
     return symbol.kind === 'macro' ? symbol.name + '/' + symbol.arity : symbol.name;
+  }
+
+  function span({line, column, length}) {
+    return new vscode.Range(line, column, line, column + length);
+  }
+
+  async function navigation(document, token) {
+    const info = projectInfo(document);
+    const {documents, includes} = await linkedDocuments(document, token, info, {forNavigation: true});
+    const cancelled = () => !!token?.isCancellationRequested;
+    if (cancelled()) return undefined;
+    const graph = navigationGraph(documents.map(getModule), includes, {target: info.target, cancelled});
+    if (!graph) return undefined;
+    const uris = new Map(documents.map(doc => [fileKey(doc.fileName), doc.uri]));
+    return {graph, root: info.root, uris};
+  }
+
+  function referenceLocations(session, document, position, includeDeclaration = false) {
+    if (!session) return [];
+    const {graph, uris} = session;
+    const locations = new Map();
+    for (const node of nodesAt(graph, fileKey(document.fileName), position)) {
+      for (const hit of graph.uses.get(node) ?? []) {
+        if (hit.declaration && !includeDeclaration) continue;
+        locations.set(JSON.stringify([hit.file, hit.line, hit.column, hit.length]), new vscode.Location(uris.get(hit.file), span(hit)));
+      }
+    }
+    return [...locations.values()];
+  }
+
+  function provideReferenceLenses(document, token) {
+    if (token?.isCancellationRequested ||
+        vscode.workspace.getConfiguration('cocovs', document.uri).get('referenceCodeLens') === false) return [];
+    const version = document.version;
+    let session;
+    // VS Code resolves visible lenses individually. Share one graph across this batch.
+    const getSession = () => session ??= navigation(document);
+    return getSymbols(document).filter(symbol => symbol.kind === 'macro' || symbol.kind === 'label' && !symbol.external).map(symbol => {
+      const lens = new vscode.CodeLens(range(symbol));
+      referenceLenses.set(lens, {document, version, getSession});
+      return lens;
+    });
+  }
+
+  async function resolveReferenceLens(lens, token) {
+    const {document, version, getSession} = referenceLenses.get(lens);
+    const stale = () => token?.isCancellationRequested || document.isClosed || document.version !== version;
+    if (stale()) return undefined;
+    const session = await getSession();
+    if (stale()) return undefined;
+    const position = lens.range.start;
+    const locations = referenceLocations(session, document, position);
+    const ru = /^ru(?:-|$)/i.test(vscode.env?.language ?? 'en');
+    const count = locations.length;
+    const title = ru ? 'Ссылок: ' + count : count + (count === 1 ? ' reference' : ' references');
+    lens.command = {title, command: count ? 'editor.action.peekLocations' : '',
+      ...(count && {arguments: [document.uri, position, locations, 'peek'],
+        tooltip: ru ? 'Показать места использования' : 'Show references'}),
+    };
+    return lens;
+  }
+
+  function hierarchyItem(node, session) {
+    const uri = session.uris.get(node.file);
+    const file = uri.fsPath;
+    const kind = node.kind === 'file' ? vscode.SymbolKind.File :
+      node.kind === 'macro' ? vscode.SymbolKind.Method : vscode.SymbolKind.Function;
+    const selection = span(node);
+    const item = new vscode.CallHierarchyItem(kind, node.kind === 'file' ? path.basename(file) : formatName(node),
+      path.relative(session.root, file), uri, selection, selection);
+    hierarchy.set(item, {session, node});
+    return item;
+  }
+
+  function callHierarchy(item, direction, token) {
+    const entry = hierarchy.get(item);
+    if (!entry || token?.isCancellationRequested) return [];
+    const {session, node} = entry;
+    const incoming = direction === 'incoming';
+    return [...(session.graph[direction].get(node) ?? [])].map(([other, sites]) => {
+      const related = hierarchyItem(other, session);
+      return incoming ? new vscode.CallHierarchyIncomingCall(related, sites.map(span)) :
+        new vscode.CallHierarchyOutgoingCall(related, sites.map(span));
+    });
+  }
+
+  async function argumentHints(document, visible, token) {
+    if (token?.isCancellationRequested || vscode.workspace.getConfiguration('cocovs', document.uri).get('inlayHints') === false) return [];
+    const module = getModule(document);
+    const slots = [];
+    for (const row of module.rows.slice(visible.start.line, visible.end.line + 1)) {
+      const {line, operation, code} = row;
+      if (!operation || row.args?.length || !/\s/.test(code[operation.end] ?? '')) continue;
+      const text = document.lineAt(line).text;
+      const list = operandList(text, code, operation.end);
+      if (!list || list.depth || list.previous.includes('') || text.slice(list.start, code.length).trim()) continue;
+      const position = new vscode.Position(line, code.length);
+      if (visible.contains(position)) slots.push({row, previous: list.previous, position, paddingLeft: /\S/.test(text[code.length - 1])});
+    }
+    if (!slots.length) return [];
+
+    const info = projectInfo(document);
+    const {symbols} = await available(document, token, info, {strict: true});
+    const macros = symbols.filter(symbol => symbol.kind === 'macro');
+    const hints = [];
+    for (const {row: {operation, name, macro, line}, previous, position, paddingLeft} of slots) {
+      if (token?.isCancellationRequested) return [];
+      const index = previous.length;
+      const visibleMacros = macros.filter(symbol => symbol.name === operation.name &&
+        (symbol.imported || module.library || macro || symbol.line < line));
+      if (index === 0 && visibleMacros.some(symbol => symbol.arity === 0)) continue;
+      let matching = visibleMacros.filter(symbol => symbol.arity > index);
+      if (!matching.length) {
+        if (DIRECTIVES.includes(name) || !operandKinds({name, previous}, info.target, info.instructions, []).length) continue;
+        matching = instructionSignatures(info.target, operation.name);
+      }
+      const forms = matching.map(symbol => signature(symbol).params);
+      if (index === 0 && forms.some(params => params.length === 0)) continue;
+      const arity = Math.min(...forms.filter(params => params.length > index).map(params => params.length));
+      const candidates = forms.filter(params => params.length === arity);
+      const parameter = candidates[0]?.[index];
+      if (!parameter || parameter.name.startsWith('$') || parameter.name === '...' ||
+          candidates.some(params => params[index].name !== parameter.name)) continue;
+      const hint = new vscode.InlayHint(position, parameter.name + ':', vscode.InlayHintKind.Parameter);
+      hint.paddingLeft = paddingLeft;
+      hint.paddingRight = true;
+      if (parameter.description) hint.tooltip = parameter.description;
+      hints.push(hint);
+    }
+    return hints;
   }
 
   async function lookup(document, position, token) {
@@ -306,6 +479,8 @@ function registerEditor(context, liveDiagnostics) {
     clearTimeout(timer);
     const check = ++revision;
     timer = setTimeout(() => {
+      refreshInlays.fire();
+      refreshReferences.fire();
       for (const editor of vscode.window.visibleTextEditors) {
         const document = editor.document;
         if (SELECTOR.includes(document.languageId)) void updateHints(document, check).catch(() => {});
@@ -358,8 +533,7 @@ function registerEditor(context, liveDiagnostics) {
     const source = document.lineAt(line).text;
     const directive = sourceDirective(source);
     if (!directive || directive.folder) return undefined;
-    const column = source.indexOf(directive.name, source.indexOf('@') + '@include'.length);
-    if (column < 0) return undefined;
+    const {column} = directive;
     try {
       const {root} = projectInfo(document);
       const file = includePath(root, document.fileName, directive.path);
@@ -375,12 +549,14 @@ function registerEditor(context, liveDiagnostics) {
       const watcher = vscode.workspace.createFileSystemWatcher(pattern);
       context.subscriptions.push(watcher, watcher.onDidCreate(changed), watcher.onDidChange(changed), watcher.onDidDelete(changed));
     }
+    const sources = vscode.workspace.createFileSystemWatcher('**/{cdm-project.json,*.asm,*.mlb,*.cdm8,*.cdm8e,*.cdm16,*.cdm16e,*.cocoasm}');
+    context.subscriptions.push(sources, sources.onDidCreate(scheduleHints), sources.onDidChange(scheduleHints), sources.onDidDelete(scheduleHints));
   }
 
   if (liveDiagnostics?.onDidChangeLaunchProfile) {
     context.subscriptions.push(liveDiagnostics.onDidChangeLaunchProfile(() => { refreshColors.fire(); scheduleHints(); }));
   }
-  context.subscriptions.push(refreshColors, diagnostics, {dispose() { clearTimeout(timer); revision++; }},
+  context.subscriptions.push(refreshColors, refreshInlays, refreshReferences, diagnostics, {dispose() { clearTimeout(timer); revision++; }},
     vscode.languages.registerCodeLensProvider(SELECTOR, {
       onDidChangeCodeLenses: refreshColors.event,
       provideCodeLenses(document) {
@@ -392,6 +568,11 @@ function registerEditor(context, liveDiagnostics) {
           tooltip: ru ? 'Собрать и начать отладку этого файла' : 'Build and start debugging this file',
         }));
       },
+    }),
+    vscode.languages.registerCodeLensProvider(SELECTOR, {
+      onDidChangeCodeLenses: refreshReferences.event,
+      provideCodeLenses: provideReferenceLenses,
+      resolveCodeLens: resolveReferenceLens,
     }),
     vscode.commands.registerCommand('cocovs.showSuggestions', () => vscode.commands.executeCommand('editor.action.triggerSuggest')),
     vscode.workspace.onDidSaveTextDocument(refresh),
@@ -405,6 +586,8 @@ function registerEditor(context, liveDiagnostics) {
         refreshColors.fire();
         scheduleHints();
       }
+      if (event.affectsConfiguration('cocovs.inlayHints')) refreshInlays.fire();
+      if (event.affectsConfiguration('cocovs.referenceCodeLens')) refreshReferences.fire();
     }),
     vscode.languages.registerHoverProvider(SELECTOR, {async provideHover(document, position, token) {
       const {line, character} = position;
@@ -470,6 +653,29 @@ function registerEditor(context, liveDiagnostics) {
       help.activeParameter = Math.max(0, Math.min(call.active, help.signatures[help.activeSignature].parameters.length - 1));
       return help;
     }}, ' ', ','),
+    vscode.languages.registerInlayHintsProvider(SELECTOR, {
+      onDidChangeInlayHints: refreshInlays.event,
+      provideInlayHints: argumentHints,
+    }),
+    vscode.languages.registerReferenceProvider(SELECTOR, {async provideReferences(document, position, options, token) {
+      const session = await navigation(document, token);
+      return referenceLocations(session, document, position, options.includeDeclaration);
+    }}),
+    vscode.languages.registerCallHierarchyProvider(SELECTOR, {
+      async prepareCallHierarchy(document, position, token) {
+        const session = await navigation(document, token);
+        if (!session) return [];
+        const {graph} = session;
+        const file = fileKey(document.fileName);
+        const nodes = nodesAt(graph, file, position);
+        const text = document.lineAt(position.line).text;
+        const directive = sourceDirective(text);
+        if (directive && position.character >= text.indexOf('@') && position.character < directive.column) nodes.push(graph.files.get(file));
+        return nodes.filter(node => node?.kind === 'macro' || graph.callable.has(node)).map(node => hierarchyItem(node, session));
+      },
+      provideCallHierarchyIncomingCalls: (item, token) => callHierarchy(item, 'incoming', token),
+      provideCallHierarchyOutgoingCalls: (item, token) => callHierarchy(item, 'outgoing', token),
+    }),
     vscode.languages.registerRenameProvider(SELECTOR, {
       prepareRename: (document, position, token) => rename(document, position, undefined, token),
       provideRenameEdits: (document, position, newName, token) => rename(document, position, newName, token),

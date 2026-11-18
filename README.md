@@ -7,10 +7,12 @@ CocoVS brings CdM-8 and CdM-16 (Coco-de-Mer) assembly editing, CoCAS builds, sou
 ## Features
 
 - Complete mnemonics, operands, macros, labels, and `@include` paths. View instruction signatures and documentation as you edit.
+- See inline hints for the next empty argument, and hover over binary and hexadecimal literals for their decimal values.
 - Run standalone files with remembered processor and memory architecture, and start debugging from entry-point CodeLens links.
-- Format assembly, jump to definitions, rename linked labels, and see CoCAS diagnostics in the **Problems** panel.
+- Format assembly, jump to definitions, and click reference counts above labels and macros to see their uses. Browse call hierarchies, rename linked labels, and see CoCAS diagnostics in the **Problems** panel.
 - Build and run programs through CoCAS. Use `cdm-project.json` to configure the target, memory architecture, and source files for a project.
 - Step through CdM-8 and CdM-16 source, set breakpoints, and inspect registers, the stack, and RAM. Hover over a RAM byte to see its address, value, and any data labels with their types.
+- Split the RAM view into movable Registers, Data Labels, and Memory Grid tabs.
 - Run cdmbot test suites from the VS Code **Testing** view.
 - Install cdmbot from CocoVS, analyze code statistics and syntax, create projects, and manage Git-backed assembly packages. See the [development-tool workflow](docs/cdmbot-development.md).
 

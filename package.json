@@ -2,7 +2,7 @@
   "name": "cdm-project-tools",
   "displayName": "CocoVS — CdM Assembly",
   "description": "CdM-8 and CdM-16 assembly editing, CoCAS builds, debugging and RAM inspection for Coco-de-Mer processors",
-  "version": "0.9.8",
+  "version": "1.0.1",
   "publisher": "cdm-project-community",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -558,6 +558,18 @@
           "default": true,
           "scope": "resource",
           "description": "Check assembly for syntax errors while editing and show them in Problems."
+        },
+        "cocovs.inlayHints": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Show a hint for the next empty operand of a documented macro or instruction."
+        },
+        "cocovs.referenceCodeLens": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Show clickable reference counts above assembly labels and macros."
         },
         "cocovs.target": {
           "type": "string",

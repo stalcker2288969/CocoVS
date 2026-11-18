@@ -73,21 +73,42 @@ function artifactPaths(job, directory = buildDirectory(job)) {
 }
 
 async function publishArtifacts(temporary, final, hasDebug) {
+  const plan = [];
+  for (const key of ['combined', 'debug', 'image']) {
+    const file = final[key];
+    const prior = await fs.lstat(file).catch(error => { if (error.code !== 'ENOENT') throw error; });
+    if (prior && !prior.isFile()) throw new Error('Expected an output file: ' + file);
+    const staged = key !== 'debug' || hasDebug ? temporary[key] : undefined;
+    const backup = prior ? temporary[key] + '.previous' : undefined;
+    if (staged || backup) plan.push({file, staged, backup});
+  }
+  for (const {file, backup} of plan) {
+    if (backup) await fs.copyFile(file, backup);
+  }
+
   const updates = [];
   try {
-    for (const key of ['combined', 'debug', 'image']) {
-      const prior = await fs.lstat(final[key]).catch(error => { if (error.code !== 'ENOENT') throw error; });
-      if (prior && !prior.isFile()) throw new Error('Expected an output file: ' + final[key]);
-      const backup = prior ? temporary[key] + '.previous' : undefined;
-      if (backup) await fs.copyFile(final[key], backup);
-      if (key !== 'debug' || hasDebug) await fs.rename(temporary[key], final[key]);
-      else if (prior) await fs.unlink(final[key]);
-      updates.push({file: final[key], backup});
+    for (const update of plan) {
+      if (update.staged) await fs.rename(update.staged, update.file);
+      else await fs.unlink(update.file);
+      updates.push(update);
     }
   } catch (error) {
+    const failures = [];
     for (const {file, backup} of updates.reverse()) {
-      if (backup) await fs.rename(backup, file);
-      else await fs.rm(file, {force: true});
+      try {
+        if (backup) await fs.rename(backup, file);
+        else await fs.rm(file, {force: true});
+      } catch (rollbackError) {
+        failures.push(rollbackError);
+      }
+    }
+    if (failures.length) {
+      const recoveryDirectory = path.dirname(temporary.image);
+      const failure = new AggregateError([error, ...failures],
+        'Could not replace all build outputs: ' + error.message + '. Rollback was incomplete. Recovery files: ' + recoveryDirectory);
+      failure.recoveryDirectory = recoveryDirectory;
+      throw failure;
     }
     throw error;
   }
@@ -118,6 +139,7 @@ async function build(job, cocas, options = {}, run = processResult) {
   const sources = job.sources.map(file => path.resolve(root, file));
   const values = {project: root, entry: path.resolve(root, job.config.entry), ...temporary};
   const native = job.config.target !== 'custom';
+  let keepStage = false;
   function failed(problems, fallback, details = '') {
     const issue = problems.find(problem => !problem.warning && problem.message);
     const location = issue && (path.relative(root, path.resolve(root, issue.file)) || issue.file) + ':' + issue.line;
@@ -171,7 +193,9 @@ async function build(job, cocas, options = {}, run = processResult) {
       return failed(problems, fallback, outputText);
     }
     if (native && outputText) options.onOutput?.(outputText + '\n');
-    if (!(await fs.stat(temporary.image).catch(() => undefined))?.isFile()) throw new Error('Assembler did not create ' + path.basename(temporary.image));
+    if (!(await fs.lstat(temporary.image).catch(error => { if (error.code !== 'ENOENT') throw error; }))?.isFile()) {
+      throw new Error('Assembler did not create a regular image file: ' + path.basename(temporary.image));
+    }
     const hasDebug = (await fs.lstat(temporary.debug).catch(error => { if (error.code !== 'ENOENT') throw error; }))?.isFile();
     if (native && !hasDebug) throw new Error('CoCAS did not create debug information.');
     if (['cdm8', 'cdm16'].includes(job.config.target)) {
@@ -182,9 +206,11 @@ async function build(job, cocas, options = {}, run = processResult) {
     options.signal?.throwIfAborted();
     await publishArtifacts(temporary, final, hasDebug);
     return {ok: true, artifacts: final, problems};
+  } catch (error) {
+    keepStage = error.recoveryDirectory === stage;
+    throw error;
   } finally {
-    // The staging directory was created under the canonical build directory above.
-    await fs.rm(stage, {recursive: true, force: true});
+    if (!keepStage) await fs.rm(stage, {recursive: true, force: true});
   }
 }
 

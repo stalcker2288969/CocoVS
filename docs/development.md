@@ -46,13 +46,13 @@ This also uses `COCOVS_INTEGRATION`. It checks outputs and stack state, runs cdm
 To test editor APIs in a real VS Code instance:
 
 ```sh
-npm install --no-save --package-lock=false @vscode/test-electron@2.5.2
+npm ci
 npm run test:host
 ```
 
 `COCOVS_VSCODE` selects an installed executable. Otherwise the runner downloads VS Code; `COCOVS_VSCODE_VERSION` selects its version. On Linux without a display, use `xvfb-run -a npm run test:host`.
 
-The [CI workflow](../.github/workflows/ci.yml) runs on Windows, macOS, and Linux, sets up Node/Python/Java, runs tests, and uploads a VSIX from its Linux job. Its current configuration skips tests requiring cdmbot.
+The [CI workflow](../.github/workflows/ci.yml) runs on Windows, macOS, and Linux. It installs the bundled cdmbot toolchain, enables integration tests and checks the editor in the VS Code Extension Host. The Linux job uploads the VSIX.
 
 ## Package a release
 

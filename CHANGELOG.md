@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.1
+
+- Show a clickable reference count above code labels, data labels and macros, with references from linked files.
+
+## 1.0.0
+
+- Find references and browse call hierarchies across linked source files, including macro overloads and include chains.
+- Show an inline argument hint only while the next operand slot is empty.
+- Keep local references available when a linked external definition is missing, and select template names at the correct source position.
+- Check all build output paths before replacing artifacts and keep recovery copies if a failed update cannot be rolled back.
+
+## 0.9.9
+
+- Show inline hints for the next empty argument of documented macros and instructions.
+- Find references to assembly symbols and included files, and browse static calls and include chains in Call Hierarchy.
+
 ## 0.9.8
 
 - Show the exact decimal value when hovering over a binary or hexadecimal literal in assembly source.

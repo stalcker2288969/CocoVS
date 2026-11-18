@@ -232,7 +232,7 @@ function activate(context) {
   }
 
   async function withBuild(job, options, onBuilt) {
-    const key = artifactPaths({...job, root: await fs.realpath(job.root)}).image;
+    const key = fileKey(artifactPaths({...job, root: await fs.realpath(job.root)}).combined);
     if (active.has(key)) throw new Error('A build or run is already active for this output.');
     active.add(key);
     const report = {sources: new Set([...job.sources, MANIFEST].map(file => fileKey(path.resolve(job.root, file))))};
